@@ -1,0 +1,282 @@
+{
+  "actions": [],
+  "creation": "2024-01-01 12:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "enabled",
+    "section_break_2",
+    "application_key",
+    "application_secret",
+    "consumer_key",
+    "service_name",
+    "default_sender",
+    "column_break_8",
+    "auto_detect_service",
+    "enable_logging",
+    "log_level",
+    "section_break_notifications",
+    "enable_sales_order_sms",
+    "enable_payment_sms",
+    "enable_delivery_sms",
+    "enable_purchase_order_sms",
+    "column_break_notifications",
+    "sales_order_template",
+    "payment_template",
+    "delivery_template",
+    "purchase_order_template",
+    "section_break_test",
+    "test_mobile",
+    "test_message",
+    "send_test_sms",
+    "column_break_test",
+    "last_test_result",
+    "sms_balance",
+    "refresh_balance",
+    "section_break_advanced",
+    "custom_headers",
+    "api_timeout",
+    "max_retries",
+    "column_break_advanced",
+    "webhook_url",
+    "enable_webhook",
+    "webhook_secret"
+  ],
+  "fields": [
+    {
+      "default": "1",
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "label": "Activé"
+    },
+    {
+      "fieldname": "section_break_2",
+      "fieldtype": "Section Break",
+      "label": "Configuration API OVH"
+    },
+    {
+      "fieldname": "application_key",
+      "fieldtype": "Data",
+      "label": "Application Key",
+      "mandatory_depends_on": "enabled",
+      "reqd": 1
+    },
+    {
+      "fieldname": "application_secret",
+      "fieldtype": "Password",
+      "label": "Application Secret",
+      "mandatory_depends_on": "enabled",
+      "reqd": 1
+    },
+    {
+      "fieldname": "consumer_key",
+      "fieldtype": "Password",
+      "label": "Consumer Key",
+      "mandatory_depends_on": "enabled",
+      "reqd": 1
+    },
+    {
+      "depends_on": "eval:!doc.auto_detect_service",
+      "fieldname": "service_name",
+      "fieldtype": "Data",
+      "label": "Service Name",
+      "mandatory_depends_on": "eval:doc.enabled && !doc.auto_detect_service"
+    },
+    {
+      "fieldname": "default_sender",
+      "fieldtype": "Data",
+      "label": "Expéditeur par défaut",
+      "default": "ErpJosseaume"
+    },
+    {
+      "fieldname": "column_break_8",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "1",
+      "fieldname": "auto_detect_service",
+      "fieldtype": "Check",
+      "label": "Détection automatique du service"
+    },
+    {
+      "default": "1",
+      "fieldname": "enable_logging",
+      "fieldtype": "Check",
+      "label": "Activer les logs"
+    },
+    {
+      "default": "INFO",
+      "fieldname": "log_level",
+      "fieldtype": "Select",
+      "label": "Niveau de log",
+      "options": "DEBUG\nINFO\nWARNING\nERROR"
+    },
+    {
+      "fieldname": "section_break_notifications",
+      "fieldtype": "Section Break",
+      "label": "Notifications Automatiques"
+    },
+    {
+      "default": "1",
+      "fieldname": "enable_sales_order_sms",
+      "fieldtype": "Check",
+      "label": "SMS Commandes"
+    },
+    {
+      "default": "1",
+      "fieldname": "enable_payment_sms",
+      "fieldtype": "Check",
+      "label": "SMS Paiements"
+    },
+    {
+      "default": "1",
+      "fieldname": "enable_delivery_sms",
+      "fieldtype": "Check",
+      "label": "SMS Livraisons"
+    },
+    {
+      "fieldname": "enable_purchase_order_sms",
+      "fieldtype": "Check",
+      "label": "SMS Achats"
+    },
+    {
+      "fieldname": "column_break_notifications",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "Commande {name} confirmée - Montant: {grand_total}€",
+      "fieldname": "sales_order_template",
+      "fieldtype": "Small Text",
+      "label": "Template Commande"
+    },
+    {
+      "default": "Paiement reçu - Montant: {paid_amount}€",
+      "fieldname": "payment_template",
+      "fieldtype": "Small Text",
+      "label": "Template Paiement"
+    },
+    {
+      "default": "Votre commande {name} a été expédiée",
+      "fieldname": "delivery_template",
+      "fieldtype": "Small Text",
+      "label": "Template Livraison"
+    },
+    {
+      "default": "Commande fournisseur {name} - {supplier_name}",
+      "fieldname": "purchase_order_template",
+      "fieldtype": "Small Text",
+      "label": "Template Achat"
+    },
+    {
+      "fieldname": "section_break_test",
+      "fieldtype": "Section Break",
+      "label": "Test SMS"
+    },
+    {
+      "fieldname": "test_mobile",
+      "fieldtype": "Data",
+      "label": "Numéro de test"
+    },
+    {
+      "default": "Test SMS ERPNext-OVH",
+      "fieldname": "test_message",
+      "fieldtype": "Small Text",
+      "label": "Message de test"
+    },
+    {
+      "fieldname": "send_test_sms",
+      "fieldtype": "Button",
+      "label": "Envoyer SMS de test"
+    },
+    {
+      "fieldname": "column_break_test",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "last_test_result",
+      "fieldtype": "Long Text",
+      "label": "Résultat du dernier test",
+      "read_only": 1
+    },
+    {
+      "fieldname": "sms_balance",
+      "fieldtype": "Float",
+      "label": "Solde SMS",
+      "read_only": 1
+    },
+    {
+      "fieldname": "refresh_balance",
+      "fieldtype": "Button",
+      "label": "Actualiser le solde"
+    },
+    {
+      "fieldname": "section_break_advanced",
+      "fieldtype": "Section Break",
+      "label": "Paramètres Avancés"
+    },
+    {
+      "fieldname": "custom_headers",
+      "fieldtype": "Code",
+      "label": "Headers personnalisés (JSON)"
+    },
+    {
+      "default": "30",
+      "fieldname": "api_timeout",
+      "fieldtype": "Int",
+      "label": "Timeout API (secondes)"
+    },
+    {
+      "default": "3",
+      "fieldname": "max_retries",
+      "fieldtype": "Int",
+      "label": "Tentatives max"
+    },
+    {
+      "fieldname": "column_break_advanced",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "webhook_url",
+      "fieldtype": "Data",
+      "label": "URL Webhook"
+    },
+    {
+      "fieldname": "enable_webhook",
+      "fieldtype": "Check",
+      "label": "Activer Webhook"
+    },
+    {
+      "fieldname": "webhook_secret",
+      "fieldtype": "Password",
+      "label": "Secret Webhook"
+    }
+  ],
+  "issingle": 1,
+  "modified": "2024-01-01 12:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "OVH SMS Integration",
+  "name": "OVH SMS Settings",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "print": 1,
+      "read": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "read": 1,
+      "role": "SMS Manager",
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1,
+  "translated_doctype": 1
+}
