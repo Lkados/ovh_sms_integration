@@ -1,306 +1,268 @@
-# -*- coding: utf-8 -*-
-from __future__ import unicode_literals
+# Remplacez le contenu de ovh_sms_settings.py - Version avec correction Password
+
 import frappe
-from frappe import _
-from frappe.model.document import Document
-import json
 import requests
 import hashlib
-import time
-from datetime import datetime
+import datetime
+from frappe.model.document import Document
+from frappe import _
 
 class OVHSMSSettings(Document):
-    def validate(self):
-        """Validation des paramètres"""
-        if self.enabled:
-            self.validate_api_credentials()
-            self.validate_templates()
-    
-    def validate_api_credentials(self):
-        """Valide les credentials API OVH"""
-        required_fields = ['application_key', 'application_secret', 'consumer_key']
-        
-        for field in required_fields:
-            if not self.get(field):
-                frappe.throw(_("Le champ {0} est requis").format(self.meta.get_label(field)))
-        
-        if not self.auto_detect_service and not self.service_name:
-            frappe.throw(_("Le nom du service est requis si la détection automatique est désactivée"))
-    
-    def validate_templates(self):
-        """Valide les templates SMS"""
-        templates = [
-            'sales_order_template',
-            'payment_template', 
-            'delivery_template',
-            'purchase_order_template'
-        ]
-        
-        for template_field in templates:
-            template = self.get(template_field)
-            if template and len(template) > 160:
-                frappe.msgprint(_("Le template {0} dépasse 160 caractères").format(
-                    self.meta.get_label(template_field)
-                ), alert=True)
-    
-    def get_ovh_signature(self, method, url, body, timestamp):
-        """Génère la signature OVH"""
-        pre_hash = f"{self.application_secret}+{self.consumer_key}+{method}+{url}+{body}+{timestamp}"
-        return "$1$" + hashlib.sha1(pre_hash.encode('utf-8')).hexdigest()
-    
-    def get_service_name(self):
-        """Récupère le nom du service SMS"""
-        if not self.auto_detect_service:
-            return self.service_name
-        
-        # Détection automatique
-        timestamp = str(int(time.time()))
-        method = "GET"
-        url = "https://eu.api.ovh.com/1.0/sms"
-        body = ""
-        
-        signature = self.get_ovh_signature(method, url, body, timestamp)
-        
-        headers = {
-            "X-Ovh-Application": self.application_key,
-            "X-Ovh-Consumer": self.consumer_key,
-            "X-Ovh-Signature": signature,
-            "X-Ovh-Timestamp": timestamp
-        }
-        
-        try:
-            response = requests.get(url, headers=headers, timeout=self.api_timeout or 30)
-            response.raise_for_status()
-            
-            services = response.json()
-            if services:
-                return services[0]
-            else:
-                frappe.throw(_("Aucun service SMS trouvé"))
-                
-        except Exception as e:
-            frappe.log_error(f"Erreur récupération service SMS: {str(e)}")
-            frappe.throw(_("Impossible de récupérer le service SMS: {0}").format(str(e)))
-    
-    def send_sms(self, message, receiver, sender=None):
-        """Envoie un SMS via l'API OVH"""
-        if not self.enabled:
-            frappe.throw(_("L'intégration OVH SMS n'est pas activée"))
-        
-        service_name = self.get_service_name()
-        sender = sender or self.default_sender
-        
-        timestamp = str(int(time.time()))
-        method = "POST"
-        url = f"https://eu.api.ovh.com/1.0/sms/{service_name}/jobs"
-        
-        body_data = {
-            "message": message,
-            "receivers": [receiver] if isinstance(receiver, str) else receiver,
-            "sender": sender,
-            "senderForResponse": True
-        }
-        
-        body = json.dumps(body_data, separators=(',', ':'))
-        signature = self.get_ovh_signature(method, url, body, timestamp)
-        
-        headers = {
-            "X-Ovh-Application": self.application_key,
-            "X-Ovh-Consumer": self.consumer_key,
-            "X-Ovh-Signature": signature,
-            "X-Ovh-Timestamp": timestamp,
-            "Content-Type": "application/json"
-        }
-        
-        # Headers personnalisés
-        if self.custom_headers:
-            try:
-                custom_headers = json.loads(self.custom_headers)
-                headers.update(custom_headers)
-            except:
-                pass
-        
-        try:
-            response = requests.post(
-                url, 
-                data=body, 
-                headers=headers, 
-                timeout=self.api_timeout or 30
-            )
-            response.raise_for_status()
-            
-            result = response.json()
-            
-            # Log success
-            if self.enable_logging:
-                frappe.logger().info(f"SMS envoyé avec succès: {result}")
-            
-            # Créer un log SMS
-            self.create_sms_log(message, receiver, sender, "Success", result)
-            
-            return result
-            
-        except Exception as e:
-            error_msg = str(e)
-            
-            # Log error
-            frappe.log_error(f"Erreur envoi SMS OVH: {error_msg}")
-            
-            # Créer un log d'erreur
-            self.create_sms_log(message, receiver, sender, "Failed", {"error": error_msg})
-            
-            # Retry logic
-            if hasattr(self, '_retry_count'):
-                self._retry_count += 1
-            else:
-                self._retry_count = 1
-            
-            if self._retry_count < (self.max_retries or 3):
-                time.sleep(2 ** self._retry_count)  # Exponential backoff
-                return self.send_sms(message, receiver, sender)
-            
-            frappe.throw(_("Erreur lors de l'envoi du SMS: {0}").format(error_msg))
-    
-    def create_sms_log(self, message, receiver, sender, status, response):
-        """Crée un log SMS"""
-        try:
-            log_doc = frappe.get_doc({
-                "doctype": "SMS Log",
-                "message": message,
-                "receiver": receiver,
-                "sender": sender,
-                "status": status,
-                "response": json.dumps(response) if isinstance(response, dict) else str(response),
-                "timestamp": datetime.now()
-            })
-            log_doc.insert(ignore_permissions=True)
-            frappe.db.commit()
-        except:
-            pass  # Ne pas faire échouer l'envoi SMS pour un problème de log
-    
-    def get_sms_balance(self):
-        """Récupère le solde SMS"""
-        service_name = self.get_service_name()
-        
-        timestamp = str(int(time.time()))
-        method = "GET"
-        url = f"https://eu.api.ovh.com/1.0/sms/{service_name}"
-        body = ""
-        
-        signature = self.get_ovh_signature(method, url, body, timestamp)
-        
-        headers = {
-            "X-Ovh-Application": self.application_key,
-            "X-Ovh-Consumer": self.consumer_key,
-            "X-Ovh-Signature": signature,
-            "X-Ovh-Timestamp": timestamp
-        }
-        
-        try:
-            response = requests.get(url, headers=headers, timeout=self.api_timeout or 30)
-            response.raise_for_status()
-            
-            data = response.json()
-            balance = data.get('creditsLeft', 0)
-            
-            # Mettre à jour le solde
-            frappe.db.set_value('OVH SMS Settings', 'OVH SMS Settings', 'sms_balance', balance)
-            frappe.db.commit()
-            
-            return balance
-            
-        except Exception as e:
-            frappe.log_error(f"Erreur récupération solde SMS: {str(e)}")
-            return None
-    
-    def test_connection(self):
-        """Test la connexion à l'API OVH"""
-        timestamp = str(int(time.time()))
-        method = "GET"
-        url = "https://eu.api.ovh.com/1.0/me"
-        body = ""
-        
-        signature = self.get_ovh_signature(method, url, body, timestamp)
-        
-        headers = {
-            "X-Ovh-Application": self.application_key,
-            "X-Ovh-Consumer": self.consumer_key,
-            "X-Ovh-Signature": signature,
-            "X-Ovh-Timestamp": timestamp
-        }
-        
-        try:
-            response = requests.get(url, headers=headers, timeout=self.api_timeout or 30)
-            response.raise_for_status()
-            
-            data = response.json()
-            return {
-                "success": True,
-                "message": f"Connexion réussie - Compte: {data.get('nichandle', 'N/A')}",
-                "data": data
-            }
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "message": f"Erreur de connexion: {str(e)}"
-            }
+	def validate(self):
+		if self.enabled:
+			if not self.application_key:
+				frappe.throw(_("Application Key est requis"))
+			if not self.get_application_secret():
+				frappe.throw(_("Application Secret est requis"))
+			if not self.get_consumer_key():
+				frappe.throw(_("Consumer Key est requis"))
+			if not self.auto_detect_service and not self.service_name:
+				frappe.throw(_("Service Name est requis si la détection automatique est désactivée"))
 
-# Méthodes pour les boutons
-@frappe.whitelist()
-def send_test_sms():
-    """Envoie un SMS de test"""
-    settings = frappe.get_single('OVH SMS Settings')
-    
-    if not settings.test_mobile:
-        frappe.throw(_("Veuillez saisir un numéro de téléphone de test"))
-    
-    message = settings.test_message or "Test SMS ERPNext-OVH"
-    
-    try:
-        result = settings.send_sms(message, settings.test_mobile)
-        
-        test_result = {
-            "success": True,
-            "message": "SMS de test envoyé avec succès",
-            "ids": result.get('ids', []),
-            "credits": result.get('totalCreditsRemoved', 0),
-            "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
-        
-        frappe.set_value('OVH SMS Settings', 'OVH SMS Settings', 'last_test_result', 
-                        json.dumps(test_result, indent=2))
-        
-        frappe.msgprint(_("SMS de test envoyé avec succès!"), alert=True, indicator='green')
-        return test_result
-        
-    except Exception as e:
-        test_result = {
-            "success": False,
-            "message": f"Erreur lors de l'envoi: {str(e)}",
-            "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
-        
-        frappe.set_value('OVH SMS Settings', 'OVH SMS Settings', 'last_test_result', 
-                        json.dumps(test_result, indent=2))
-        
-        frappe.msgprint(_("Erreur lors de l'envoi du SMS de test: {0}").format(str(e)), 
-                       alert=True, indicator='red')
-        return test_result
+	def get_application_secret(self):
+		"""Récupère l'Application Secret (même si c'est un champ Password)"""
+		# Si le champ est masqué par des étoiles, récupérer depuis la base
+		if self.application_secret and self.application_secret.startswith('*'):
+			return frappe.get_password("OVH SMS Settings", "OVH SMS Settings", "application_secret")
+		return self.application_secret
+
+	def get_consumer_key(self):
+		"""Récupère le Consumer Key (même si c'est un champ Password)"""
+		# Si le champ est masqué par des étoiles, récupérer depuis la base
+		if self.consumer_key and self.consumer_key.startswith('*'):
+			return frappe.get_password("OVH SMS Settings", "OVH SMS Settings", "consumer_key")
+		return self.consumer_key
+
+	def get_service_name(self):
+		"""Récupère le nom du service SMS"""
+		if not self.auto_detect_service and self.service_name:
+			return self.service_name
+		
+		# Auto-détection
+		try:
+			services = self.get_sms_services()
+			if services:
+				return services[0]
+			else:
+				frappe.throw(_("Aucun service SMS trouvé sur votre compte OVH"))
+		except Exception as e:
+			frappe.throw(_("Erreur lors de la récupération des services SMS: {0}").format(str(e)))
+
+	def get_sms_services(self):
+		"""Récupère la liste des services SMS disponibles"""
+		try:
+			signature_data = self._create_signature("GET", "https://eu.api.ovh.com/1.0/sms", "")
+			
+			headers = {
+				"X-Ovh-Application": self.application_key,
+				"X-Ovh-Consumer": self.get_consumer_key(),
+				"X-Ovh-Signature": signature_data["signature"],
+				"X-Ovh-Timestamp": signature_data["timestamp"]
+			}
+			
+			response = requests.get("https://eu.api.ovh.com/1.0/sms", headers=headers, timeout=30)
+			response.raise_for_status()
+			
+			return response.json()
+		except Exception as e:
+			frappe.log_error(f"Erreur récupération services SMS: {e}")
+			raise
+
+	def get_service_details(self, service_name):
+		"""Récupère les détails d'un service SMS"""
+		try:
+			url = f"https://eu.api.ovh.com/1.0/sms/{service_name}"
+			signature_data = self._create_signature("GET", url, "")
+			
+			headers = {
+				"X-Ovh-Application": self.application_key,
+				"X-Ovh-Consumer": self.get_consumer_key(),
+				"X-Ovh-Signature": signature_data["signature"],
+				"X-Ovh-Timestamp": signature_data["timestamp"]
+			}
+			
+			response = requests.get(url, headers=headers, timeout=30)
+			response.raise_for_status()
+			
+			return response.json()
+		except Exception as e:
+			frappe.log_error(f"Erreur récupération détails service {service_name}: {e}")
+			raise
+
+	def _create_signature(self, method, url, body=""):
+		"""Crée la signature OVH"""
+		timestamp = str(int(datetime.datetime.now().timestamp()))
+		
+		# Récupération sécurisée des clés
+		app_secret = self.get_application_secret()
+		consumer_key = self.get_consumer_key()
+		
+		# Construction du pre-hash selon la documentation OVH
+		pre_hash = f"{app_secret}+{consumer_key}+{method}+{url}+{body}+{timestamp}"
+		
+		# Calcul SHA1 et ajout du préfixe
+		signature = "$1$" + hashlib.sha1(pre_hash.encode('utf-8')).hexdigest()
+		
+		return {
+			"signature": signature,
+			"timestamp": timestamp
+		}
+
+	def test_connection(self):
+		"""Teste la connexion à l'API OVH"""
+		try:
+			# Vérification que les clés sont récupérables
+			app_secret = self.get_application_secret()
+			consumer_key = self.get_consumer_key()
+			
+			if not app_secret or not consumer_key:
+				return {
+					"success": False,
+					"message": "Impossible de récupérer les clés API. Vérifiez la configuration."
+				}
+			
+			# Test de base avec /me
+			signature_data = self._create_signature("GET", "https://eu.api.ovh.com/1.0/me", "")
+			
+			headers = {
+				"X-Ovh-Application": self.application_key,
+				"X-Ovh-Consumer": consumer_key,
+				"X-Ovh-Signature": signature_data["signature"],
+				"X-Ovh-Timestamp": signature_data["timestamp"]
+			}
+			
+			response = requests.get("https://eu.api.ovh.com/1.0/me", headers=headers, timeout=30)
+			response.raise_for_status()
+			
+			account_info = response.json()
+			
+			# Test des services SMS
+			services = self.get_sms_services()
+			
+			if not services:
+				return {
+					"success": False,
+					"message": "Connexion API réussie mais aucun service SMS trouvé"
+				}
+			
+			# Test du service spécifique si configuré
+			service_name = self.get_service_name()
+			service_details = self.get_service_details(service_name)
+			
+			return {
+				"success": True,
+				"message": f"Connexion réussie! Compte: {account_info.get('nichandle')}, Service: {service_name}, Crédits: {service_details.get('creditsLeft', 'N/A')}"
+			}
+			
+		except requests.exceptions.RequestException as e:
+			error_msg = f"Erreur de connexion: {e}"
+			if hasattr(e, 'response') and e.response is not None:
+				try:
+					error_detail = e.response.json()
+					error_msg += f" - {error_detail.get('message', '')}"
+				except:
+					error_msg += f" - {e.response.text}"
+			
+			frappe.log_error(error_msg)
+			return {
+				"success": False,
+				"message": error_msg
+			}
+		except Exception as e:
+			error_msg = f"Erreur inattendue: {str(e)}"
+			frappe.log_error(error_msg)
+			return {
+				"success": False,
+				"message": error_msg
+			}
+
+# MÉTHODES GLOBALES POUR L'API
 
 @frappe.whitelist()
-def refresh_balance():
-    """Actualise le solde SMS"""
-    settings = frappe.get_single('OVH SMS Settings')
-    
-    try:
-        balance = settings.get_sms_balance()
-        if balance is not None:
-            frappe.msgprint(_("Solde SMS actualisé: {0} crédits").format(balance), 
-                           alert=True, indicator='green')
-        else:
-            frappe.msgprint(_("Impossible de récupérer le solde SMS"), 
-                           alert=True, indicator='orange')
-    except Exception as e:
-        frappe.msgprint(_("Erreur lors de la récupération du solde: {0}").format(str(e)), 
-                       alert=True, indicator='red')
+def test_ovh_connection():
+	"""API pour tester la connexion OVH depuis l'interface"""
+	try:
+		settings = frappe.get_single('OVH SMS Settings')
+		
+		if not settings.enabled:
+			return {
+				"success": False,
+				"message": "L'intégration OVH SMS n'est pas activée"
+			}
+		
+		return settings.test_connection()
+		
+	except Exception as e:
+		frappe.log_error(f"Erreur test connexion OVH: {e}")
+		return {
+			"success": False,
+			"message": f"Erreur lors du test: {str(e)}"
+		}
+
+@frappe.whitelist()
+def send_test_sms(phone_number, message="Test SMS depuis ERPNext"):
+	"""Envoie un SMS de test"""
+	try:
+		settings = frappe.get_single('OVH SMS Settings')
+		
+		if not settings.enabled:
+			frappe.throw(_("L'intégration OVH SMS n'est pas activée"))
+		
+		# Import de la fonction d'envoi
+		from ovh_sms_integration.utils.sms_utils import send_sms
+		
+		result = send_sms(message, phone_number)
+		
+		return {
+			"success": True,
+			"message": f"SMS de test envoyé avec succès vers {phone_number}",
+			"details": result
+		}
+		
+	except Exception as e:
+		frappe.log_error(f"Erreur envoi SMS test: {e}")
+		return {
+			"success": False,
+			"message": f"Erreur lors de l'envoi: {str(e)}"
+		}
+
+@frappe.whitelist()
+def get_account_balance():
+	"""Récupère le solde du compte SMS"""
+	try:
+		settings = frappe.get_single('OVH SMS Settings')
+		
+		if not settings.enabled:
+			return {"success": False, "message": "Intégration désactivée"}
+		
+		service_name = settings.get_service_name()
+		service_details = settings.get_service_details(service_name)
+		
+		return {
+			"success": True,
+			"credits": service_details.get('creditsLeft', 0),
+			"service_name": service_name,
+			"status": service_details.get('status', 'unknown')
+		}
+		
+	except Exception as e:
+		frappe.log_error(f"Erreur récupération solde: {e}")
+		return {
+			"success": False,
+			"message": f"Erreur: {str(e)}"
+		}
+
+def get_ovh_settings():
+	"""Récupère les paramètres OVH SMS pour les autres modules"""
+	settings = frappe.get_single('OVH SMS Settings')
+	
+	if not settings.enabled:
+		frappe.throw(_("L'intégration OVH SMS n'est pas activée"))
+	
+	return {
+		"application_key": settings.application_key,
+		"application_secret": settings.get_application_secret(),
+		"consumer_key": settings.get_consumer_key(),
+		"service_name": settings.get_service_name(),
+		"enabled": settings.enabled
+	}
