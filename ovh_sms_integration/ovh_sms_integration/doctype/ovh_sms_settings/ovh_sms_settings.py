@@ -1,14 +1,22 @@
-# Code OVH SMS Settings - Version avec interface test SMS
+# -*- coding: utf-8 -*-
+"""
+OVH SMS Settings - Version corrigée avec gestion automatique des expéditeurs
+Gère la création et la validation des expéditeurs SMS
+"""
 
 import frappe
 import requests
 import hashlib
 import datetime
+import json
+import re
 from frappe.model.document import Document
 from frappe import _
 
+
 class OVHSMSSettings(Document):
 	def validate(self):
+		"""Validation des paramètres OVH SMS"""
 		if self.enabled:
 			if not self.application_key:
 				frappe.throw(_("Application Key est requis"))
@@ -75,6 +83,146 @@ class OVHSMSSettings(Document):
 			frappe.log_error(f"Erreur récupération détails service {service_name}: {e}")
 			raise
 
+	def get_available_senders(self):
+		"""Récupère la liste des expéditeurs disponibles"""
+		try:
+			service_name = self.get_service_name()
+			url = f"https://eu.api.ovh.com/1.0/sms/{service_name}/senders"
+			signature_data = self._create_signature("GET", url, "")
+			
+			headers = {
+				"X-Ovh-Application": self.application_key,
+				"X-Ovh-Consumer": self.consumer_key,
+				"X-Ovh-Signature": signature_data["signature"],
+				"X-Ovh-Timestamp": signature_data["timestamp"]
+			}
+			
+			response = requests.get(url, headers=headers, timeout=30)
+			response.raise_for_status()
+			
+			return response.json()
+		except Exception as e:
+			frappe.log_error(f"Erreur récupération expéditeurs: {e}")
+			return []
+
+	def create_sender(self, sender_name, description="ERPNext Sender"):
+		"""Crée un nouvel expéditeur SMS"""
+		try:
+			service_name = self.get_service_name()
+			url = f"https://eu.api.ovh.com/1.0/sms/{service_name}/senders"
+			
+			# Validation du nom de l'expéditeur
+			if not re.match(r'^[a-zA-Z0-9]{1,11}$', sender_name):
+				raise ValueError("Le nom de l'expéditeur doit contenir uniquement des caractères alphanumériques (max 11 caractères)")
+			
+			body_data = {
+				"sender": sender_name,
+				"description": description
+			}
+			
+			body = json.dumps(body_data, separators=(',', ':'))
+			signature_data = self._create_signature("POST", url, body)
+			
+			headers = {
+				"X-Ovh-Application": self.application_key,
+				"X-Ovh-Consumer": self.consumer_key,
+				"X-Ovh-Signature": signature_data["signature"],
+				"X-Ovh-Timestamp": signature_data["timestamp"],
+				"Content-Type": "application/json"
+			}
+			
+			response = requests.post(url, data=body, headers=headers, timeout=30)
+			response.raise_for_status()
+			
+			result = response.json()
+			frappe.log_error(f"Expéditeur créé avec succès: {sender_name}")
+			
+			return {
+				"success": True,
+				"message": f"Expéditeur '{sender_name}' créé avec succès",
+				"details": result
+			}
+			
+		except requests.exceptions.RequestException as e:
+			error_msg = f"Erreur création expéditeur: {e}"
+			if hasattr(e, 'response') and e.response is not None:
+				try:
+					error_detail = e.response.json()
+					error_msg += f" - {error_detail.get('message', '')}"
+				except:
+					error_msg += f" - {e.response.text}"
+			
+			frappe.log_error(error_msg)
+			return {
+				"success": False,
+				"message": error_msg
+			}
+		except Exception as e:
+			error_msg = f"Erreur inattendue création expéditeur: {str(e)}"
+			frappe.log_error(error_msg)
+			return {
+				"success": False,
+				"message": error_msg
+			}
+
+	def validate_and_create_sender(self, sender):
+		"""Valide un expéditeur et le crée si nécessaire"""
+		try:
+			available_senders = self.get_available_senders()
+			
+			# Si l'expéditeur existe déjà
+			if sender in available_senders:
+				return {
+					"success": True,
+					"message": f"Expéditeur '{sender}' disponible",
+					"created": False
+				}
+			
+			# Sinon, tenter de le créer
+			result = self.create_sender(sender)
+			if result["success"]:
+				result["created"] = True
+			
+			return result
+			
+		except Exception as e:
+			return {
+				"success": False,
+				"message": f"Erreur validation expéditeur: {str(e)}",
+				"created": False
+			}
+
+	def get_best_sender(self):
+		"""Retourne le meilleur expéditeur disponible ou en crée un"""
+		try:
+			# D'abord, essayer l'expéditeur par défaut configuré
+			if self.default_sender:
+				result = self.validate_and_create_sender(self.default_sender)
+				if result["success"]:
+					return self.default_sender
+			
+			# Sinon, récupérer les expéditeurs disponibles
+			available_senders = self.get_available_senders()
+			
+			if available_senders:
+				# Utiliser le premier expéditeur disponible
+				return available_senders[0]
+			
+			# Aucun expéditeur disponible, créer un expéditeur par défaut
+			default_names = ["ERPNext", "ERP", "System", "SMS"]
+			
+			for name in default_names:
+				result = self.create_sender(name)
+				if result["success"]:
+					return name
+			
+			# Si tout échoue, utiliser un nom générique
+			frappe.throw(_("Impossible de créer un expéditeur SMS valide"))
+			
+		except Exception as e:
+			frappe.log_error(f"Erreur récupération expéditeur: {e}")
+			return "ERPNext"  # Fallback
+
 	def _create_signature(self, method, url, body=""):
 		"""Crée la signature OVH"""
 		timestamp = str(int(datetime.datetime.now().timestamp()))
@@ -90,22 +238,32 @@ class OVHSMSSettings(Document):
 			"timestamp": timestamp
 		}
 
-	def send_sms(self, message, phone_number, sender="ErpJosseaume"):
-		"""Envoie un SMS via l'API OVH"""
+	def send_sms(self, message, phone_number, sender=None):
+		"""Envoie un SMS via l'API OVH - VERSION CORRIGÉE"""
 		try:
 			service_name = self.get_service_name()
 			url = f"https://eu.api.ovh.com/1.0/sms/{service_name}/jobs"
+			
+			# Déterminer l'expéditeur à utiliser
+			if not sender:
+				sender = self.get_best_sender()
+			else:
+				# Valider l'expéditeur fourni
+				result = self.validate_and_create_sender(sender)
+				if not result["success"]:
+					frappe.log_error(f"Impossible d'utiliser l'expéditeur {sender}: {result['message']}")
+					sender = self.get_best_sender()
 			
 			# Préparation du corps de la requête
 			body_data = {
 				"message": message,
 				"receivers": [phone_number],
-				"sender": sender
+				"sender": sender,
+				"noStopClause": False,  # Ajouter la clause STOP pour la conformité
+				"priority": "high"
 			}
 			
-			import json
 			body = json.dumps(body_data, separators=(',', ':'))
-			
 			signature_data = self._create_signature("POST", url, body)
 			
 			headers = {
@@ -122,11 +280,12 @@ class OVHSMSSettings(Document):
 			result = response.json()
 			
 			# Log du succès
-			frappe.log_error(f"SMS envoyé avec succès vers {phone_number}: {result}")
+			frappe.log_error(f"SMS envoyé avec succès vers {phone_number} avec expéditeur {sender}: {result}")
 			
 			return {
 				"success": True,
 				"message": f"SMS envoyé avec succès vers {phone_number}",
+				"sender_used": sender,
 				"details": result
 			}
 			
@@ -153,7 +312,7 @@ class OVHSMSSettings(Document):
 			}
 
 	def test_connection(self):
-		"""Teste la connexion à l'API OVH"""
+		"""Teste la connexion à l'API OVH - VERSION AMÉLIORÉE"""
 		try:
 			# Test de base avec /me
 			signature_data = self._create_signature("GET", "https://eu.api.ovh.com/1.0/me", "")
@@ -179,13 +338,21 @@ class OVHSMSSettings(Document):
 					"message": "Connexion API réussie mais aucun service SMS trouvé"
 				}
 			
-			# Test du service spécifique si configuré
+			# Test du service spécifique
 			service_name = self.get_service_name()
 			service_details = self.get_service_details(service_name)
 			
+			# Test des expéditeurs
+			available_senders = self.get_available_senders()
+			sender_info = f"Expéditeurs disponibles: {', '.join(available_senders)}" if available_senders else "Aucun expéditeur configuré"
+			
 			return {
 				"success": True,
-				"message": f"Connexion réussie! Compte: {account_info.get('nichandle')}, Service: {service_name}, Crédits: {service_details.get('creditsLeft', 'N/A')}"
+				"message": f"""Connexion réussie!
+Compte: {account_info.get('nichandle')}
+Service: {service_name}
+Crédits: {service_details.get('creditsLeft', 'N/A')}
+{sender_info}"""
 			}
 			
 		except requests.exceptions.RequestException as e:
@@ -209,6 +376,7 @@ class OVHSMSSettings(Document):
 				"success": False,
 				"message": error_msg
 			}
+
 
 # MÉTHODES GLOBALES POUR L'API
 
@@ -293,6 +461,50 @@ def get_account_balance():
 			"message": f"Erreur: {str(e)}"
 		}
 
+@frappe.whitelist()
+def get_available_senders():
+	"""Récupère la liste des expéditeurs disponibles"""
+	try:
+		settings = frappe.get_single('OVH SMS Settings')
+		
+		if not settings.enabled:
+			return {"success": False, "message": "Intégration désactivée"}
+		
+		senders = settings.get_available_senders()
+		
+		return {
+			"success": True,
+			"senders": senders,
+			"count": len(senders)
+		}
+		
+	except Exception as e:
+		frappe.log_error(f"Erreur récupération expéditeurs: {e}")
+		return {
+			"success": False,
+			"message": f"Erreur: {str(e)}"
+		}
+
+@frappe.whitelist()
+def create_new_sender(sender_name, description="ERPNext Sender"):
+	"""Crée un nouvel expéditeur SMS"""
+	try:
+		settings = frappe.get_single('OVH SMS Settings')
+		
+		if not settings.enabled:
+			return {"success": False, "message": "Intégration désactivée"}
+		
+		result = settings.create_sender(sender_name, description)
+		
+		return result
+		
+	except Exception as e:
+		frappe.log_error(f"Erreur création expéditeur: {e}")
+		return {
+			"success": False,
+			"message": f"Erreur: {str(e)}"
+		}
+
 def get_ovh_settings():
 	"""Récupère les paramètres OVH SMS pour les autres modules"""
 	settings = frappe.get_single('OVH SMS Settings')
@@ -308,7 +520,7 @@ def get_ovh_settings():
 		"enabled": settings.enabled
 	}
 
-def send_sms(message, phone_number, sender="ErpJosseaume"):
+def send_sms(message, phone_number, sender=None):
 	"""Fonction publique pour envoyer un SMS depuis d'autres modules"""
 	try:
 		settings = frappe.get_single('OVH SMS Settings')

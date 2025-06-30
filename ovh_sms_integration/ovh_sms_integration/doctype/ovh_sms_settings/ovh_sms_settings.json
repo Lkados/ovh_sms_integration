@@ -15,6 +15,12 @@
     "auto_detect_service",
     "enable_logging",
     "log_level",
+    "connection_status",
+    "section_break_senders",
+    "available_senders",
+    "create_sender_button",
+    "column_break_senders",
+    "sender_validation_info",
     "section_break_notifications",
     "enable_sales_order_sms",
     "enable_payment_sms",
@@ -32,15 +38,26 @@
     "column_break_test",
     "last_test_result",
     "sms_balance",
+    "last_balance_check",
     "refresh_balance",
     "section_break_advanced",
     "custom_headers",
     "api_timeout",
     "max_retries",
+    "enable_debug_mode",
     "column_break_advanced",
     "webhook_url",
     "enable_webhook",
-    "webhook_secret"
+    "webhook_secret",
+    "rate_limit_per_minute",
+    "section_break_stats",
+    "total_sms_sent",
+    "sms_sent_today",
+    "last_sms_sent",
+    "column_break_stats",
+    "total_credits_used",
+    "average_sms_per_day",
+    "last_error_message"
   ],
   "fields": [
     {
@@ -59,34 +76,39 @@
       "fieldtype": "Data",
       "label": "Application Key",
       "mandatory_depends_on": "enabled",
-      "reqd": 1
+      "reqd": 1,
+      "description": "Clé d'application OVH (16 caractères)"
     },
     {
       "fieldname": "application_secret",
       "fieldtype": "Password",
       "label": "Application Secret",
       "mandatory_depends_on": "enabled",
-      "reqd": 1
+      "reqd": 1,
+      "description": "Secret d'application OVH (32 caractères)"
     },
     {
       "fieldname": "consumer_key",
       "fieldtype": "Password",
       "label": "Consumer Key",
       "mandatory_depends_on": "enabled",
-      "reqd": 1
+      "reqd": 1,
+      "description": "Clé de consommateur OVH (32 caractères)"
     },
     {
       "depends_on": "eval:!doc.auto_detect_service",
       "fieldname": "service_name",
       "fieldtype": "Data",
       "label": "Service Name",
-      "mandatory_depends_on": "eval:doc.enabled && !doc.auto_detect_service"
+      "mandatory_depends_on": "eval:doc.enabled && !doc.auto_detect_service",
+      "description": "Nom du service SMS OVH (ex: sms-js28139-1)"
     },
     {
       "fieldname": "default_sender",
       "fieldtype": "Data",
       "label": "Expéditeur par défaut",
-      "default": "ErpJosseaume"
+      "default": "ERPNext",
+      "description": "Nom de l'expéditeur SMS (max 11 caractères alphanumériques)"
     },
     {
       "fieldname": "column_break_8",
@@ -110,6 +132,41 @@
       "fieldtype": "Select",
       "label": "Niveau de log",
       "options": "DEBUG\nINFO\nWARNING\nERROR"
+    },
+    {
+      "fieldname": "connection_status",
+      "fieldtype": "Data",
+      "label": "Statut de connexion",
+      "read_only": 1,
+      "depends_on": "enabled"
+    },
+    {
+      "fieldname": "section_break_senders",
+      "fieldtype": "Section Break",
+      "label": "Gestion des Expéditeurs SMS",
+      "depends_on": "enabled"
+    },
+    {
+      "fieldname": "available_senders",
+      "fieldtype": "Long Text",
+      "label": "Expéditeurs disponibles",
+      "read_only": 1,
+      "description": "Liste des expéditeurs SMS configurés sur votre compte OVH"
+    },
+    {
+      "fieldname": "create_sender_button",
+      "fieldtype": "Button",
+      "label": "Créer nouvel expéditeur"
+    },
+    {
+      "fieldname": "column_break_senders",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "sender_validation_info",
+      "fieldtype": "HTML",
+      "label": "Informations sur les expéditeurs",
+      "options": "<div style='background: #f8f9fa; padding: 10px; border-radius: 5px;'><h6>Règles pour les expéditeurs SMS:</h6><ul><li>Maximum 11 caractères</li><li>Caractères alphanumériques uniquement</li><li>Pas d'espaces ou caractères spéciaux</li><li>L'expéditeur doit être créé avant utilisation</li></ul></div>"
     },
     {
       "fieldname": "section_break_notifications",
@@ -144,28 +201,32 @@
       "fieldtype": "Column Break"
     },
     {
-      "default": "Commande {name} confirmée - Montant: {grand_total}€",
+      "default": "Commande {{name}} confirmée - Montant: {{grand_total}}€",
       "fieldname": "sales_order_template",
       "fieldtype": "Small Text",
-      "label": "Template Commande"
+      "label": "Template Commande",
+      "description": "Variables disponibles: {{name}}, {{customer}}, {{grand_total}}, {{currency}}"
     },
     {
-      "default": "Paiement reçu - Montant: {paid_amount}€",
+      "default": "Paiement reçu - Montant: {{paid_amount}}€",
       "fieldname": "payment_template",
       "fieldtype": "Small Text",
-      "label": "Template Paiement"
+      "label": "Template Paiement",
+      "description": "Variables disponibles: {{name}}, {{paid_amount}}, {{currency}}"
     },
     {
-      "default": "Votre commande {name} a été expédiée",
+      "default": "Votre commande {{name}} a été expédiée",
       "fieldname": "delivery_template",
       "fieldtype": "Small Text",
-      "label": "Template Livraison"
+      "label": "Template Livraison",
+      "description": "Variables disponibles: {{name}}, {{customer}}"
     },
     {
-      "default": "Commande fournisseur {name} - {supplier_name}",
+      "default": "Commande fournisseur {{name}} - {{supplier_name}}",
       "fieldname": "purchase_order_template",
       "fieldtype": "Small Text",
-      "label": "Template Achat"
+      "label": "Template Achat",
+      "description": "Variables disponibles: {{name}}, {{supplier}}, {{supplier_name}}"
     },
     {
       "fieldname": "section_break_test",
@@ -175,7 +236,8 @@
     {
       "fieldname": "test_mobile",
       "fieldtype": "Data",
-      "label": "Numéro de test"
+      "label": "Numéro de test",
+      "description": "Numéro pour les tests SMS (format: +33123456789)"
     },
     {
       "default": "Test SMS ERPNext-OVH",
@@ -202,6 +264,13 @@
       "fieldname": "sms_balance",
       "fieldtype": "Float",
       "label": "Solde SMS",
+      "read_only": 1,
+      "precision": "2"
+    },
+    {
+      "fieldname": "last_balance_check",
+      "fieldtype": "Datetime",
+      "label": "Dernière vérification",
       "read_only": 1
     },
     {
@@ -217,7 +286,8 @@
     {
       "fieldname": "custom_headers",
       "fieldtype": "Code",
-      "label": "Headers personnalisés (JSON)"
+      "label": "Headers personnalisés (JSON)",
+      "options": "JSON"
     },
     {
       "default": "30",
@@ -232,13 +302,20 @@
       "label": "Tentatives max"
     },
     {
+      "fieldname": "enable_debug_mode",
+      "fieldtype": "Check",
+      "label": "Mode debug",
+      "description": "Active les logs détaillés pour le débogage"
+    },
+    {
       "fieldname": "column_break_advanced",
       "fieldtype": "Column Break"
     },
     {
       "fieldname": "webhook_url",
       "fieldtype": "Data",
-      "label": "URL Webhook"
+      "label": "URL Webhook",
+      "description": "URL pour recevoir les notifications de statut SMS"
     },
     {
       "fieldname": "enable_webhook",
@@ -249,6 +326,65 @@
       "fieldname": "webhook_secret",
       "fieldtype": "Password",
       "label": "Secret Webhook"
+    },
+    {
+      "default": "60",
+      "fieldname": "rate_limit_per_minute",
+      "fieldtype": "Int",
+      "label": "Limite par minute",
+      "description": "Nombre max de SMS par minute"
+    },
+    {
+      "fieldname": "section_break_stats",
+      "fieldtype": "Section Break",
+      "label": "Statistiques d'utilisation",
+      "depends_on": "enabled"
+    },
+    {
+      "default": "0",
+      "fieldname": "total_sms_sent",
+      "fieldtype": "Int",
+      "label": "Total SMS envoyés",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "fieldname": "sms_sent_today",
+      "fieldtype": "Int",
+      "label": "SMS envoyés aujourd'hui",
+      "read_only": 1
+    },
+    {
+      "fieldname": "last_sms_sent",
+      "fieldtype": "Datetime",
+      "label": "Dernier SMS envoyé",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_stats",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "0",
+      "fieldname": "total_credits_used",
+      "fieldtype": "Float",
+      "label": "Crédits utilisés",
+      "read_only": 1,
+      "precision": "2"
+    },
+    {
+      "default": "0",
+      "fieldname": "average_sms_per_day",
+      "fieldtype": "Float",
+      "label": "Moyenne SMS/jour",
+      "read_only": 1,
+      "precision": "2"
+    },
+    {
+      "fieldname": "last_error_message",
+      "fieldtype": "Long Text",
+      "label": "Dernière erreur",
+      "read_only": 1
     }
   ],
   "issingle": 1,
@@ -272,6 +408,10 @@
       "read": 1,
       "role": "SMS Manager",
       "write": 1
+    },
+    {
+      "read": 1,
+      "role": "SMS User"
     }
   ],
   "sort_field": "modified",
