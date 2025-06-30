@@ -1,22 +1,14 @@
-# -*- coding: utf-8 -*-
-"""
-OVH SMS Settings - Version corrigée avec gestion automatique des expéditeurs
-Gère la création et la validation des expéditeurs SMS
-"""
+# Code OVH SMS Settings - Version avec UNIQUEMENT le logging corrigé
 
 import frappe
 import requests
 import hashlib
 import datetime
-import json
-import re
 from frappe.model.document import Document
 from frappe import _
 
-
 class OVHSMSSettings(Document):
 	def validate(self):
-		"""Validation des paramètres OVH SMS"""
 		if self.enabled:
 			if not self.application_key:
 				frappe.throw(_("Application Key est requis"))
@@ -120,7 +112,9 @@ class OVHSMSSettings(Document):
 				"description": description
 			}
 			
+			import json
 			body = json.dumps(body_data, separators=(',', ':'))
+			
 			signature_data = self._create_signature("POST", url, body)
 			
 			headers = {
@@ -135,7 +129,9 @@ class OVHSMSSettings(Document):
 			response.raise_for_status()
 			
 			result = response.json()
-			frappe.log_error(f"Expéditeur créé avec succès: {sender_name}")
+			
+			# Log de succès en tant qu'info, pas erreur - CORRECTION ICI
+			frappe.logger().info(f"Expéditeur SMS créé: {sender_name}")
 			
 			return {
 				"success": True,
@@ -224,7 +220,7 @@ class OVHSMSSettings(Document):
 			return "ERPNext"  # Fallback
 
 	def _create_signature(self, method, url, body=""):
-		"""Crée la signature OVH"""
+		"""Crée la signature OVH - VERSION ORIGINALE QUI FONCTIONNAIT"""
 		timestamp = str(int(datetime.datetime.now().timestamp()))
 		
 		# Construction du pre-hash selon la documentation OVH
@@ -239,7 +235,7 @@ class OVHSMSSettings(Document):
 		}
 
 	def send_sms(self, message, phone_number, sender=None):
-		"""Envoie un SMS via l'API OVH - VERSION CORRIGÉE"""
+		"""Envoie un SMS via l'API OVH - UNIQUEMENT LE LOGGING CORRIGÉ"""
 		try:
 			service_name = self.get_service_name()
 			url = f"https://eu.api.ovh.com/1.0/sms/{service_name}/jobs"
@@ -251,7 +247,7 @@ class OVHSMSSettings(Document):
 				# Valider l'expéditeur fourni
 				result = self.validate_and_create_sender(sender)
 				if not result["success"]:
-					frappe.log_error(f"Impossible d'utiliser l'expéditeur {sender}: {result['message']}")
+					frappe.logger().warning(f"Impossible d'utiliser l'expéditeur {sender}, fallback automatique")
 					sender = self.get_best_sender()
 			
 			# Préparation du corps de la requête
@@ -263,6 +259,7 @@ class OVHSMSSettings(Document):
 				"priority": "high"
 			}
 			
+			import json
 			body = json.dumps(body_data, separators=(',', ':'))
 			signature_data = self._create_signature("POST", url, body)
 			
@@ -279,8 +276,11 @@ class OVHSMSSettings(Document):
 			
 			result = response.json()
 			
-			# Log du succès
-			frappe.log_error(f"SMS envoyé avec succès vers {phone_number} avec expéditeur {sender}: {result}")
+			# CORRECTION PRINCIPALE: Log du succès en tant qu'INFO, pas ERROR
+			success_msg = f"SMS envoyé: {phone_number} via {sender}"
+			if result.get('ids'):
+				success_msg += f" - ID:{result['ids'][0]}"
+			frappe.logger().info(success_msg)  # INFO au lieu de frappe.log_error
 			
 			return {
 				"success": True,
@@ -312,7 +312,7 @@ class OVHSMSSettings(Document):
 			}
 
 	def test_connection(self):
-		"""Teste la connexion à l'API OVH - VERSION AMÉLIORÉE"""
+		"""Teste la connexion à l'API OVH - VERSION ORIGINALE"""
 		try:
 			# Test de base avec /me
 			signature_data = self._create_signature("GET", "https://eu.api.ovh.com/1.0/me", "")
@@ -338,7 +338,7 @@ class OVHSMSSettings(Document):
 					"message": "Connexion API réussie mais aucun service SMS trouvé"
 				}
 			
-			# Test du service spécifique
+			# Test du service spécifique si configuré
 			service_name = self.get_service_name()
 			service_details = self.get_service_details(service_name)
 			
@@ -378,7 +378,7 @@ Crédits: {service_details.get('creditsLeft', 'N/A')}
 			}
 
 
-# MÉTHODES GLOBALES POUR L'API
+# MÉTHODES GLOBALES POUR L'API - VERSION ORIGINALE
 
 @frappe.whitelist()
 def test_ovh_connection():
@@ -403,7 +403,7 @@ def test_ovh_connection():
 
 @frappe.whitelist()
 def send_test_sms(phone_number=None, message=None):
-	"""Envoie un SMS de test - VERSION CORRIGÉE"""
+	"""Envoie un SMS de test - VERSION ORIGINALE"""
 	try:
 		# Vérification des paramètres
 		if not phone_number:
