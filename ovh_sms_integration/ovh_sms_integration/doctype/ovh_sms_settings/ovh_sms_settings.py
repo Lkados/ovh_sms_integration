@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-OVH SMS Settings - Version corrigée avec gestion automatique des expéditeurs
-Gère la création et la validation des expéditeurs SMS
+OVH SMS Settings - Version avec logging corrigé
+Gère correctement les logs de succès et d'erreur avec respect des limites de caractères
 """
 
 import frappe
@@ -12,6 +12,35 @@ import json
 import re
 from frappe.model.document import Document
 from frappe import _
+
+
+def log_sms_activity(level, message, details=None):
+	"""
+	Fonction de logging optimisée pour les SMS
+	Respecte la limite de 140 caractères et évite les logs en cascade
+	"""
+	try:
+		# Tronquer le message si trop long
+		if len(message) > 130:
+			message = message[:127] + "..."
+		
+		# Pour les succès, utiliser les logs normaux plutôt que frappe.log_error
+		if level == "success":
+			frappe.logger().info(f"SMS: {message}")
+			if details:
+				frappe.logger().debug(f"SMS Details: {str(details)[:200]}")
+		elif level == "error":
+			frappe.log_error(message, "OVH SMS Error")
+			if details:
+				frappe.logger().error(f"SMS Error Details: {str(details)[:200]}")
+		elif level == "warning":
+			frappe.logger().warning(f"SMS: {message}")
+		else:
+			frappe.logger().info(f"SMS: {message}")
+			
+	except Exception as e:
+		# Éviter les logs en cascade en cas d'erreur de logging
+		pass
 
 
 class OVHSMSSettings(Document):
@@ -32,7 +61,6 @@ class OVHSMSSettings(Document):
 		if not self.auto_detect_service and self.service_name:
 			return self.service_name
 		
-		# Auto-détection
 		try:
 			services = self.get_sms_services()
 			if services:
@@ -59,7 +87,7 @@ class OVHSMSSettings(Document):
 			
 			return response.json()
 		except Exception as e:
-			frappe.log_error(f"Erreur récupération services SMS: {e}")
+			log_sms_activity("error", f"Erreur récupération services SMS: {str(e)[:80]}")
 			raise
 
 	def get_service_details(self, service_name):
@@ -80,7 +108,7 @@ class OVHSMSSettings(Document):
 			
 			return response.json()
 		except Exception as e:
-			frappe.log_error(f"Erreur récupération détails service {service_name}: {e}")
+			log_sms_activity("error", f"Erreur détails service {service_name}: {str(e)[:60]}")
 			raise
 
 	def get_available_senders(self):
@@ -102,7 +130,7 @@ class OVHSMSSettings(Document):
 			
 			return response.json()
 		except Exception as e:
-			frappe.log_error(f"Erreur récupération expéditeurs: {e}")
+			log_sms_activity("error", f"Erreur récupération expéditeurs: {str(e)[:70]}")
 			return []
 
 	def create_sender(self, sender_name, description="ERPNext Sender"):
@@ -135,7 +163,7 @@ class OVHSMSSettings(Document):
 			response.raise_for_status()
 			
 			result = response.json()
-			frappe.log_error(f"Expéditeur créé avec succès: {sender_name}")
+			log_sms_activity("success", f"Expéditeur {sender_name} créé avec succès")
 			
 			return {
 				"success": True,
@@ -152,14 +180,14 @@ class OVHSMSSettings(Document):
 				except:
 					error_msg += f" - {e.response.text}"
 			
-			frappe.log_error(error_msg)
+			log_sms_activity("error", error_msg[:120])
 			return {
 				"success": False,
 				"message": error_msg
 			}
 		except Exception as e:
 			error_msg = f"Erreur inattendue création expéditeur: {str(e)}"
-			frappe.log_error(error_msg)
+			log_sms_activity("error", error_msg[:100])
 			return {
 				"success": False,
 				"message": error_msg
@@ -220,7 +248,7 @@ class OVHSMSSettings(Document):
 			frappe.throw(_("Impossible de créer un expéditeur SMS valide"))
 			
 		except Exception as e:
-			frappe.log_error(f"Erreur récupération expéditeur: {e}")
+			log_sms_activity("error", f"Erreur récupération expéditeur: {str(e)[:80]}")
 			return "ERPNext"  # Fallback
 
 	def _create_signature(self, method, url, body=""):
@@ -239,7 +267,7 @@ class OVHSMSSettings(Document):
 		}
 
 	def send_sms(self, message, phone_number, sender=None):
-		"""Envoie un SMS via l'API OVH - VERSION CORRIGÉE"""
+		"""Envoie un SMS via l'API OVH - VERSION AVEC LOGGING CORRIGÉ"""
 		try:
 			service_name = self.get_service_name()
 			url = f"https://eu.api.ovh.com/1.0/sms/{service_name}/jobs"
@@ -251,7 +279,7 @@ class OVHSMSSettings(Document):
 				# Valider l'expéditeur fourni
 				result = self.validate_and_create_sender(sender)
 				if not result["success"]:
-					frappe.log_error(f"Impossible d'utiliser l'expéditeur {sender}: {result['message']}")
+					log_sms_activity("warning", f"Expéditeur {sender} indisponible, fallback automatique")
 					sender = self.get_best_sender()
 			
 			# Préparation du corps de la requête
@@ -259,7 +287,7 @@ class OVHSMSSettings(Document):
 				"message": message,
 				"receivers": [phone_number],
 				"sender": sender,
-				"noStopClause": False,  # Ajouter la clause STOP pour la conformité
+				"noStopClause": False,
 				"priority": "high"
 			}
 			
@@ -279,40 +307,79 @@ class OVHSMSSettings(Document):
 			
 			result = response.json()
 			
-			# Log du succès
-			frappe.log_error(f"SMS envoyé avec succès vers {phone_number} avec expéditeur {sender}: {result}")
+			# Log de succès optimisé
+			log_sms_activity("success", 
+				f"SMS envoyé: {phone_number} via {sender} - ID:{result.get('ids', [''])[0]}")
+			
+			# Mise à jour des statistiques
+			self._update_sms_stats(result.get('totalCreditsRemoved', 1))
 			
 			return {
 				"success": True,
 				"message": f"SMS envoyé avec succès vers {phone_number}",
 				"sender_used": sender,
-				"details": result
+				"sms_id": result.get('ids', [''])[0],
+				"credits_used": result.get('totalCreditsRemoved', 1)
 			}
 			
 		except requests.exceptions.RequestException as e:
-			error_msg = f"Erreur envoi SMS: {e}"
+			error_msg = f"Erreur envoi SMS: {str(e)[:80]}"
 			if hasattr(e, 'response') and e.response is not None:
 				try:
 					error_detail = e.response.json()
-					error_msg += f" - {error_detail.get('message', '')}"
+					error_msg = f"API Error: {error_detail.get('message', str(e))[:100]}"
 				except:
-					error_msg += f" - {e.response.text}"
+					error_msg = f"HTTP {e.response.status_code}: {str(e)[:80]}"
 			
-			frappe.log_error(error_msg)
+			log_sms_activity("error", error_msg)
 			return {
 				"success": False,
 				"message": error_msg
 			}
 		except Exception as e:
-			error_msg = f"Erreur inattendue envoi SMS: {str(e)}"
-			frappe.log_error(error_msg)
+			error_msg = f"Erreur inattendue SMS: {str(e)[:80]}"
+			log_sms_activity("error", error_msg)
 			return {
 				"success": False,
 				"message": error_msg
 			}
 
+	def _update_sms_stats(self, credits_used=1):
+		"""Met à jour les statistiques d'utilisation SMS"""
+		try:
+			# Mise à jour des compteurs
+			self.total_sms_sent = (self.total_sms_sent or 0) + 1
+			self.total_credits_used = (self.total_credits_used or 0) + credits_used
+			self.last_sms_sent = datetime.datetime.now()
+			
+			# Calcul SMS envoyés aujourd'hui
+			today = datetime.date.today()
+			if hasattr(self, 'last_stats_update') and self.last_stats_update:
+				if self.last_stats_update.date() == today:
+					self.sms_sent_today = (self.sms_sent_today or 0) + 1
+				else:
+					self.sms_sent_today = 1
+			else:
+				self.sms_sent_today = 1
+			
+			# Calcul moyenne par jour
+			if self.total_sms_sent > 0:
+				days_since_install = max(1, (datetime.date.today() - datetime.date(2024, 1, 1)).days)
+				self.average_sms_per_day = round(self.total_sms_sent / days_since_install, 2)
+			
+			# Sauvegarde sans validation pour éviter les conflits
+			self.db_set('total_sms_sent', self.total_sms_sent, commit=True)
+			self.db_set('total_credits_used', self.total_credits_used, commit=True)
+			self.db_set('sms_sent_today', self.sms_sent_today, commit=True)
+			self.db_set('last_sms_sent', self.last_sms_sent, commit=True)
+			self.db_set('average_sms_per_day', self.average_sms_per_day, commit=True)
+			
+		except Exception as e:
+			# Ignorer les erreurs de mise à jour des stats pour ne pas bloquer l'envoi
+			log_sms_activity("warning", f"Erreur mise à jour stats: {str(e)[:60]}")
+
 	def test_connection(self):
-		"""Teste la connexion à l'API OVH - VERSION AMÉLIORÉE"""
+		"""Teste la connexion à l'API OVH"""
 		try:
 			# Test de base avec /me
 			signature_data = self._create_signature("GET", "https://eu.api.ovh.com/1.0/me", "")
@@ -344,7 +411,9 @@ class OVHSMSSettings(Document):
 			
 			# Test des expéditeurs
 			available_senders = self.get_available_senders()
-			sender_info = f"Expéditeurs disponibles: {', '.join(available_senders)}" if available_senders else "Aucun expéditeur configuré"
+			sender_info = f"Expéditeurs: {', '.join(available_senders[:3])}" if available_senders else "Aucun expéditeur"
+			
+			log_sms_activity("success", f"Test connexion OVH réussi - {account_info.get('nichandle')}")
 			
 			return {
 				"success": True,
@@ -356,22 +425,22 @@ Crédits: {service_details.get('creditsLeft', 'N/A')}
 			}
 			
 		except requests.exceptions.RequestException as e:
-			error_msg = f"Erreur de connexion: {e}"
+			error_msg = f"Erreur de connexion: {str(e)[:80]}"
 			if hasattr(e, 'response') and e.response is not None:
 				try:
 					error_detail = e.response.json()
-					error_msg += f" - {error_detail.get('message', '')}"
+					error_msg = f"API Error: {error_detail.get('message', str(e))[:100]}"
 				except:
-					error_msg += f" - {e.response.text}"
+					error_msg = f"HTTP {e.response.status_code}: {str(e)[:80]}"
 			
-			frappe.log_error(error_msg)
+			log_sms_activity("error", error_msg)
 			return {
 				"success": False,
 				"message": error_msg
 			}
 		except Exception as e:
-			error_msg = f"Erreur inattendue: {str(e)}"
-			frappe.log_error(error_msg)
+			error_msg = f"Erreur inattendue test: {str(e)[:80]}"
+			log_sms_activity("error", error_msg)
 			return {
 				"success": False,
 				"message": error_msg
@@ -395,15 +464,15 @@ def test_ovh_connection():
 		return settings.test_connection()
 		
 	except Exception as e:
-		frappe.log_error(f"Erreur test connexion OVH: {e}")
+		log_sms_activity("error", f"Erreur test connexion: {str(e)[:80]}")
 		return {
 			"success": False,
-			"message": f"Erreur lors du test: {str(e)}"
+			"message": f"Erreur lors du test: {str(e)[:100]}"
 		}
 
 @frappe.whitelist()
 def send_test_sms(phone_number=None, message=None):
-	"""Envoie un SMS de test - VERSION CORRIGÉE"""
+	"""Envoie un SMS de test - VERSION AVEC LOGGING CORRIGÉ"""
 	try:
 		# Vérification des paramètres
 		if not phone_number:
@@ -426,13 +495,22 @@ def send_test_sms(phone_number=None, message=None):
 		# Envoi du SMS
 		result = settings.send_sms(message, phone_number)
 		
+		# Mise à jour du résultat du test dans les paramètres
+		if result["success"]:
+			test_result = f"✅ SMS envoyé avec succès vers {phone_number} à {datetime.datetime.now().strftime('%H:%M:%S')}"
+			settings.db_set('last_test_result', test_result, commit=True)
+		else:
+			test_result = f"❌ Erreur: {result['message']} à {datetime.datetime.now().strftime('%H:%M:%S')}"
+			settings.db_set('last_test_result', test_result, commit=True)
+		
 		return result
 		
 	except Exception as e:
-		frappe.log_error(f"Erreur envoi SMS test: {e}")
+		error_msg = f"Erreur envoi SMS test: {str(e)[:80]}"
+		log_sms_activity("error", error_msg)
 		return {
 			"success": False,
-			"message": f"Erreur lors de l'envoi: {str(e)}"
+			"message": error_msg
 		}
 
 @frappe.whitelist()
@@ -447,18 +525,23 @@ def get_account_balance():
 		service_name = settings.get_service_name()
 		service_details = settings.get_service_details(service_name)
 		
+		# Mise à jour du solde dans les paramètres
+		balance = service_details.get('creditsLeft', 0)
+		settings.db_set('sms_balance', balance, commit=True)
+		settings.db_set('last_balance_check', datetime.datetime.now(), commit=True)
+		
 		return {
 			"success": True,
-			"credits": service_details.get('creditsLeft', 0),
+			"credits": balance,
 			"service_name": service_name,
 			"status": service_details.get('status', 'unknown')
 		}
 		
 	except Exception as e:
-		frappe.log_error(f"Erreur récupération solde: {e}")
+		log_sms_activity("error", f"Erreur récupération solde: {str(e)[:70]}")
 		return {
 			"success": False,
-			"message": f"Erreur: {str(e)}"
+			"message": f"Erreur: {str(e)[:100]}"
 		}
 
 @frappe.whitelist()
@@ -472,6 +555,10 @@ def get_available_senders():
 		
 		senders = settings.get_available_senders()
 		
+		# Mise à jour de la liste dans les paramètres
+		senders_text = ", ".join(senders) if senders else "Aucun expéditeur configuré"
+		settings.db_set('available_senders', senders_text, commit=True)
+		
 		return {
 			"success": True,
 			"senders": senders,
@@ -479,10 +566,10 @@ def get_available_senders():
 		}
 		
 	except Exception as e:
-		frappe.log_error(f"Erreur récupération expéditeurs: {e}")
+		log_sms_activity("error", f"Erreur récupération expéditeurs: {str(e)[:60]}")
 		return {
 			"success": False,
-			"message": f"Erreur: {str(e)}"
+			"message": f"Erreur: {str(e)[:100]}"
 		}
 
 @frappe.whitelist()
@@ -499,10 +586,10 @@ def create_new_sender(sender_name, description="ERPNext Sender"):
 		return result
 		
 	except Exception as e:
-		frappe.log_error(f"Erreur création expéditeur: {e}")
+		log_sms_activity("error", f"Erreur création expéditeur: {str(e)[:60]}")
 		return {
 			"success": False,
-			"message": f"Erreur: {str(e)}"
+			"message": f"Erreur: {str(e)[:100]}"
 		}
 
 def get_ovh_settings():
@@ -531,5 +618,5 @@ def send_sms(message, phone_number, sender=None):
 		return settings.send_sms(message, phone_number, sender)
 		
 	except Exception as e:
-		frappe.log_error(f"Erreur envoi SMS public: {e}")
-		frappe.throw(_("Erreur lors de l'envoi SMS: {0}").format(str(e)))
+		log_sms_activity("error", f"Erreur envoi SMS public: {str(e)[:70]}")
+		frappe.throw(_("Erreur lors de l'envoi SMS: {0}").format(str(e)[:100]))
