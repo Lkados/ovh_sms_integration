@@ -1,4 +1,4 @@
-# Code OVH SMS Settings - Version avec correction signature et diagnostics
+# Code OVH SMS Settings - Version avec récupération correcte des champs Password
 
 import frappe
 import requests
@@ -15,12 +15,37 @@ class OVHSMSSettings(Document):
 		if self.enabled:
 			if not self.application_key:
 				frappe.throw(_("Application Key est requis"))
-			if not self.application_secret:
+			if not self.get_password("application_secret"):
 				frappe.throw(_("Application Secret est requis"))
-			if not self.consumer_key:
+			if not self.get_password("consumer_key"):
 				frappe.throw(_("Consumer Key est requis"))
 			if not self.auto_detect_service and not self.service_name:
 				frappe.throw(_("Service Name est requis si la détection automatique est désactivée"))
+
+	def get_decrypted_password(self, fieldname):
+		"""Récupère et décrypte un champ de type Password"""
+		try:
+			# Méthode 1 : get_password (recommandée pour les champs Password)
+			password_value = self.get_password(fieldname)
+			if password_value:
+				return password_value.strip()
+			
+			# Méthode 2 : Récupération directe si get_password ne fonctionne pas
+			direct_value = self.get(fieldname)
+			if direct_value:
+				return str(direct_value).strip()
+			
+			# Méthode 3 : Récupération depuis la base de données
+			if self.name:
+				db_value = frappe.db.get_value(self.doctype, self.name, fieldname)
+				if db_value:
+					return str(db_value).strip()
+			
+			return None
+			
+		except Exception as e:
+			frappe.log_error(f"Erreur récupération password {fieldname}: {str(e)}")
+			return None
 
 	def _get_ovh_server_time(self):
 		"""Récupère le temps synchronisé du serveur OVH"""
@@ -35,16 +60,25 @@ class OVHSMSSettings(Document):
 
 	def _create_signature(self, method, url, body=""):
 		"""
-		Crée la signature OVH avec la méthode officielle
-		Version corrigée avec synchronisation temps et diagnostics
+		Crée la signature OVH avec récupération correcte des champs Password
 		"""
 		try:
 			# Obtenir le timestamp du serveur OVH
 			timestamp = str(self._get_ovh_server_time())
 			
-			# Nettoyer les clés (supprimer espaces en début/fin)
-			app_secret = str(self.application_secret).strip()
-			consumer_key = str(self.consumer_key).strip()
+			# CORRECTION PRINCIPALE : Récupération correcte des champs Password
+			app_secret = self.get_decrypted_password("application_secret")
+			consumer_key = self.get_decrypted_password("consumer_key")
+			
+			# Vérifications
+			if not app_secret:
+				raise ValueError("Application Secret vide ou non récupéré")
+			if not consumer_key:
+				raise ValueError("Consumer Key vide ou non récupéré")
+			
+			# Debug des longueurs
+			frappe.logger().debug(f"OVH Debug - App Secret length: {len(app_secret)}")
+			frappe.logger().debug(f"OVH Debug - Consumer Key length: {len(consumer_key)}")
 			
 			# Construire la chaîne de hachage selon la doc OVH
 			# Format: APPLICATION_SECRET+CONSUMER_KEY+METHOD+URL+BODY+TIMESTAMP
@@ -56,7 +90,7 @@ class OVHSMSSettings(Document):
 			# Ajouter le préfixe $1$
 			signature = f"$1${sha1_hash}"
 			
-			# Diagnostic en cas de problème
+			# Diagnostic
 			frappe.logger().debug(f"OVH Signature Debug - Method: {method}, URL: {url}")
 			frappe.logger().debug(f"OVH Signature Debug - Timestamp: {timestamp}")
 			frappe.logger().debug(f"OVH Signature Debug - Pre-hash length: {len(pre_hash)}")
@@ -71,15 +105,20 @@ class OVHSMSSettings(Document):
 			raise
 
 	def _make_ovh_request(self, method, endpoint, body=""):
-		"""Effectue une requête OVH avec gestion d'erreurs"""
+		"""Effectue une requête OVH avec récupération correcte des Password"""
 		url = f"https://eu.api.ovh.com/1.0{endpoint}"
 		
 		try:
 			signature_data = self._create_signature(method, url, body)
 			
+			# CORRECTION : Récupération correcte de consumer_key (Password field)
+			consumer_key = self.get_decrypted_password("consumer_key")
+			if not consumer_key:
+				raise ValueError("Consumer Key non récupéré")
+			
 			headers = {
 				"X-Ovh-Application": str(self.application_key).strip(),
-				"X-Ovh-Consumer": str(self.consumer_key).strip(),
+				"X-Ovh-Consumer": consumer_key,
 				"X-Ovh-Signature": signature_data["signature"],
 				"X-Ovh-Timestamp": signature_data["timestamp"]
 			}
@@ -103,10 +142,16 @@ class OVHSMSSettings(Document):
 			
 			# Diagnostic spécifique pour les erreurs de signature
 			if e.response.status_code == 400 and "Invalid signature" in str(e.response.text):
-				error_msg += " - Vérifiez vos clés API OVH"
-				frappe.logger().error(f"Erreur signature OVH - App Key: {self.application_key[:8]}...")
-				frappe.logger().error(f"Erreur signature OVH - Consumer Key existe: {bool(self.consumer_key)}")
-				frappe.logger().error(f"Erreur signature OVH - App Secret existe: {bool(self.application_secret)}")
+				error_msg += " - Problème de signature, vérifiez les clés API"
+				
+				# Diagnostic des clés
+				app_key_ok = bool(self.application_key and len(self.application_key.strip()) > 10)
+				app_secret_ok = bool(self.get_decrypted_password("application_secret"))
+				consumer_key_ok = bool(self.get_decrypted_password("consumer_key"))
+				
+				frappe.logger().error(f"Diagnostic OVH - App Key OK: {app_key_ok}")
+				frappe.logger().error(f"Diagnostic OVH - App Secret OK: {app_secret_ok}")
+				frappe.logger().error(f"Diagnostic OVH - Consumer Key OK: {consumer_key_ok}")
 			
 			frappe.log_error(error_msg)
 			raise Exception(error_msg)
@@ -116,17 +161,24 @@ class OVHSMSSettings(Document):
 			raise
 
 	def test_connection(self):
-		"""Teste la connexion à l'API OVH avec diagnostics"""
+		"""Teste la connexion à l'API OVH avec diagnostic des Password fields"""
 		try:
-			# Vérifications préliminaires
+			# Vérifications préliminaires avec diagnostic des Password
 			if not self.application_key or len(self.application_key.strip()) == 0:
 				return {"success": False, "message": "Application Key manquant"}
 			
-			if not self.application_secret or len(self.application_secret.strip()) == 0:
-				return {"success": False, "message": "Application Secret manquant"}
+			app_secret = self.get_decrypted_password("application_secret")
+			if not app_secret:
+				return {"success": False, "message": "Application Secret manquant ou non récupéré (vérifiez le champ Password)"}
 			
-			if not self.consumer_key or len(self.consumer_key.strip()) == 0:
-				return {"success": False, "message": "Consumer Key manquant"}
+			consumer_key = self.get_decrypted_password("consumer_key")
+			if not consumer_key:
+				return {"success": False, "message": "Consumer Key manquant ou non récupéré (vérifiez le champ Password)"}
+			
+			# Diagnostic des longueurs
+			frappe.logger().info(f"Test OVH - App Key: {len(self.application_key)} chars")
+			frappe.logger().info(f"Test OVH - App Secret: {len(app_secret)} chars")
+			frappe.logger().info(f"Test OVH - Consumer Key: {len(consumer_key)} chars")
 			
 			# Test de connexion basique
 			account_info = self._make_ovh_request("GET", "/me")
@@ -478,33 +530,29 @@ def create_new_sender(sender_name, description="ERPNext Sender"):
 		}
 
 @frappe.whitelist()
-def validate_ovh_credentials():
-	"""Valide les informations d'identification OVH avec diagnostics détaillés"""
+def diagnostic_password_fields():
+	"""Diagnostic spécifique pour les champs Password"""
 	try:
 		settings = frappe.get_single('OVH SMS Settings')
 		
-		diagnostics = {
-			"application_key": {
-				"present": bool(settings.application_key),
-				"length": len(settings.application_key) if settings.application_key else 0,
-				"format_ok": bool(settings.application_key and len(settings.application_key.strip()) > 10)
-			},
+		# Test des différentes méthodes de récupération
+		diagnostic = {
 			"application_secret": {
-				"present": bool(settings.application_secret),
-				"length": len(settings.application_secret) if settings.application_secret else 0,
-				"format_ok": bool(settings.application_secret and len(settings.application_secret.strip()) > 20)
+				"get_password": bool(settings.get_password("application_secret")),
+				"direct_access": bool(settings.get("application_secret")),
+				"decrypted_length": len(settings.get_decrypted_password("application_secret") or "")
 			},
 			"consumer_key": {
-				"present": bool(settings.consumer_key),
-				"length": len(settings.consumer_key) if settings.consumer_key else 0,
-				"format_ok": bool(settings.consumer_key and len(settings.consumer_key.strip()) > 20)
+				"get_password": bool(settings.get_password("consumer_key")),
+				"direct_access": bool(settings.get("consumer_key")),
+				"decrypted_length": len(settings.get_decrypted_password("consumer_key") or "")
 			}
 		}
 		
 		return {
 			"success": True,
-			"diagnostics": diagnostics,
-			"message": "Diagnostic des credentials OVH"
+			"diagnostic": diagnostic,
+			"message": "Diagnostic des champs Password effectué"
 		}
 		
 	except Exception as e:
@@ -522,8 +570,8 @@ def get_ovh_settings():
 	
 	return {
 		"application_key": settings.application_key,
-		"application_secret": settings.application_secret,
-		"consumer_key": settings.consumer_key,
+		"application_secret": settings.get_decrypted_password("application_secret"),
+		"consumer_key": settings.get_decrypted_password("consumer_key"),
 		"service_name": settings.get_service_name(),
 		"enabled": settings.enabled
 	}
