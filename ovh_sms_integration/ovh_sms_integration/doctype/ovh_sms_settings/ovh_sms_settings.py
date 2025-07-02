@@ -1,4 +1,4 @@
-# Code OVH SMS Settings - Version originale qui fonctionnait avec logs corrigés
+# Code OVH SMS Settings - Version hybride : logique originale + récupération Password correcte
 
 import frappe
 import requests
@@ -12,9 +12,9 @@ class OVHSMSSettings(Document):
 		if self.enabled:
 			if not self.application_key:
 				frappe.throw(_("Application Key est requis"))
-			if not self.application_secret:
+			if not self.get_password("application_secret"):
 				frappe.throw(_("Application Secret est requis"))
-			if not self.consumer_key:
+			if not self.get_password("consumer_key"):
 				frappe.throw(_("Consumer Key est requis"))
 			if not self.auto_detect_service and not self.service_name:
 				frappe.throw(_("Service Name est requis si la détection automatique est désactivée"))
@@ -41,7 +41,7 @@ class OVHSMSSettings(Document):
 			
 			headers = {
 				"X-Ovh-Application": self.application_key,
-				"X-Ovh-Consumer": self.consumer_key,
+				"X-Ovh-Consumer": self.get_password("consumer_key"),  # CORRECTION ICI
 				"X-Ovh-Signature": signature_data["signature"],
 				"X-Ovh-Timestamp": signature_data["timestamp"]
 			}
@@ -62,7 +62,7 @@ class OVHSMSSettings(Document):
 			
 			headers = {
 				"X-Ovh-Application": self.application_key,
-				"X-Ovh-Consumer": self.consumer_key,
+				"X-Ovh-Consumer": self.get_password("consumer_key"),  # CORRECTION ICI
 				"X-Ovh-Signature": signature_data["signature"],
 				"X-Ovh-Timestamp": signature_data["timestamp"]
 			}
@@ -84,7 +84,7 @@ class OVHSMSSettings(Document):
 			
 			headers = {
 				"X-Ovh-Application": self.application_key,
-				"X-Ovh-Consumer": self.consumer_key,
+				"X-Ovh-Consumer": self.get_password("consumer_key"),  # CORRECTION ICI
 				"X-Ovh-Signature": signature_data["signature"],
 				"X-Ovh-Timestamp": signature_data["timestamp"]
 			}
@@ -119,7 +119,7 @@ class OVHSMSSettings(Document):
 			
 			headers = {
 				"X-Ovh-Application": self.application_key,
-				"X-Ovh-Consumer": self.consumer_key,
+				"X-Ovh-Consumer": self.get_password("consumer_key"),  # CORRECTION ICI
 				"X-Ovh-Signature": signature_data["signature"],
 				"X-Ovh-Timestamp": signature_data["timestamp"],
 				"Content-Type": "application/json"
@@ -130,7 +130,7 @@ class OVHSMSSettings(Document):
 			
 			result = response.json()
 			
-			# CORRECTION: Log de succès en INFO, pas ERROR
+			# Log de succès en INFO, pas ERROR
 			frappe.logger().info(f"Expéditeur SMS créé: {sender_name}")
 			
 			return {
@@ -220,11 +220,15 @@ class OVHSMSSettings(Document):
 			return "ERPNext"  # Fallback
 
 	def _create_signature(self, method, url, body=""):
-		"""Crée la signature OVH - VERSION ORIGINALE QUI FONCTIONNAIT"""
+		"""Crée la signature OVH - VERSION ORIGINALE AVEC RÉCUPÉRATION PASSWORD CORRECTE"""
 		timestamp = str(int(datetime.datetime.now().timestamp()))
 		
+		# CORRECTION PRINCIPALE: Utiliser get_password() pour les champs Password
+		app_secret = self.get_password("application_secret") or self.application_secret
+		consumer_key = self.get_password("consumer_key") or self.consumer_key
+		
 		# Construction du pre-hash selon la documentation OVH
-		pre_hash = f"{self.application_secret}+{self.consumer_key}+{method}+{url}+{body}+{timestamp}"
+		pre_hash = f"{app_secret}+{consumer_key}+{method}+{url}+{body}+{timestamp}"
 		
 		# Calcul SHA1 et ajout du préfixe
 		signature = "$1$" + hashlib.sha1(pre_hash.encode('utf-8')).hexdigest()
@@ -265,7 +269,7 @@ class OVHSMSSettings(Document):
 			
 			headers = {
 				"X-Ovh-Application": self.application_key,
-				"X-Ovh-Consumer": self.consumer_key,
+				"X-Ovh-Consumer": self.get_password("consumer_key"),  # CORRECTION ICI
 				"X-Ovh-Signature": signature_data["signature"],
 				"X-Ovh-Timestamp": signature_data["timestamp"],
 				"Content-Type": "application/json"
@@ -276,7 +280,7 @@ class OVHSMSSettings(Document):
 			
 			result = response.json()
 			
-			# CORRECTION PRINCIPALE: Log du succès en INFO, pas ERROR
+			# CORRECTION: Log du succès en INFO, pas ERROR
 			success_msg = f"SMS envoyé: {phone_number} via {sender}"
 			if result.get('ids'):
 				success_msg += f" - ID:{result['ids'][0]}"
@@ -312,14 +316,14 @@ class OVHSMSSettings(Document):
 			}
 
 	def test_connection(self):
-		"""Teste la connexion à l'API OVH - VERSION ORIGINALE"""
+		"""Teste la connexion à l'API OVH - VERSION ORIGINALE AVEC RÉCUPÉRATION PASSWORD"""
 		try:
 			# Test de base avec /me
 			signature_data = self._create_signature("GET", "https://eu.api.ovh.com/1.0/me", "")
 			
 			headers = {
 				"X-Ovh-Application": self.application_key,
-				"X-Ovh-Consumer": self.consumer_key,
+				"X-Ovh-Consumer": self.get_password("consumer_key"),  # CORRECTION ICI
 				"X-Ovh-Signature": signature_data["signature"],
 				"X-Ovh-Timestamp": signature_data["timestamp"]
 			}
@@ -514,8 +518,8 @@ def get_ovh_settings():
 	
 	return {
 		"application_key": settings.application_key,
-		"application_secret": settings.application_secret,
-		"consumer_key": settings.consumer_key,
+		"application_secret": settings.get_password("application_secret") or settings.application_secret,
+		"consumer_key": settings.get_password("consumer_key") or settings.consumer_key,
 		"service_name": settings.get_service_name(),
 		"enabled": settings.enabled
 	}
