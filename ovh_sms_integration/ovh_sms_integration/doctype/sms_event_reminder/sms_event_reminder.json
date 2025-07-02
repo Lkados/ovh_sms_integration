@@ -1,0 +1,308 @@
+{
+  "actions": [],
+  "creation": "2024-01-01 12:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "enabled",
+    "section_break_config",
+    "event_type_filter",
+    "reminder_hours_before",
+    "reminder_message_template",
+    "column_break_config",
+    "enable_multiple_reminders",
+    "reminder_times",
+    "send_to_customer_only",
+    "send_to_employee",
+    "section_break_conditions",
+    "minimum_event_duration",
+    "skip_past_events",
+    "skip_all_day_events",
+    "column_break_conditions",
+    "business_hours_only",
+    "business_start_time",
+    "business_end_time",
+    "exclude_weekends",
+    "section_break_templates",
+    "customer_template",
+    "employee_template",
+    "default_template",
+    "column_break_templates",
+    "template_help",
+    "section_break_stats",
+    "total_reminders_sent",
+    "reminders_sent_today",
+    "last_reminder_sent",
+    "column_break_stats",
+    "last_check_time",
+    "next_check_time",
+    "failed_reminders_count",
+    "section_break_test",
+    "test_event",
+    "test_customer_mobile",
+    "test_employee_mobile",
+    "column_break_test",
+    "send_test_reminder",
+    "last_test_result"
+  ],
+  "fields": [
+    {
+      "default": "1",
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "label": "Activer les rappels d'événements"
+    },
+    {
+      "fieldname": "section_break_config",
+      "fieldtype": "Section Break",
+      "label": "Configuration des Rappels"
+    },
+    {
+      "default": "entretien",
+      "fieldname": "event_type_filter",
+      "fieldtype": "Data",
+      "label": "Type d'événement à surveiller",
+      "description": "Mot-clé présent dans le titre de l'événement (ex: entretien, rdv, maintenance)"
+    },
+    {
+      "default": "24",
+      "fieldname": "reminder_hours_before",
+      "fieldtype": "Int",
+      "label": "Heures avant l'événement",
+      "description": "Nombre d'heures avant l'événement pour envoyer le rappel"
+    },
+    {
+      "default": "Rappel : Vous avez un rendez-vous {{subject}} prévu le {{start_date}} à {{start_time}}. Merci de vous présenter à l'heure.",
+      "fieldname": "reminder_message_template",
+      "fieldtype": "Text",
+      "label": "Template de message par défaut",
+      "description": "Variables disponibles: {{subject}}, {{description}}, {{start_date}}, {{start_time}}, {{event_name}}, {{customer_name}}, {{employee_name}}"
+    },
+    {
+      "fieldname": "column_break_config",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "enable_multiple_reminders",
+      "fieldtype": "Check",
+      "label": "Rappels multiples"
+    },
+    {
+      "depends_on": "enable_multiple_reminders",
+      "fieldname": "reminder_times",
+      "fieldtype": "Small Text",
+      "label": "Heures de rappel",
+      "description": "Heures séparées par des virgules (ex: 24,2,0.5 pour 24h, 2h et 30min avant)"
+    },
+    {
+      "default": "1",
+      "fieldname": "send_to_customer_only",
+      "fieldtype": "Check",
+      "label": "Envoyer seulement au client"
+    },
+    {
+      "fieldname": "send_to_employee",
+      "fieldtype": "Check",
+      "label": "Envoyer aussi à l'employé"
+    },
+    {
+      "fieldname": "section_break_conditions",
+      "fieldtype": "Section Break",
+      "label": "Conditions d'Envoi"
+    },
+    {
+      "default": "30",
+      "fieldname": "minimum_event_duration",
+      "fieldtype": "Int",
+      "label": "Durée minimum (minutes)",
+      "description": "Durée minimum de l'événement pour envoyer un rappel"
+    },
+    {
+      "default": "1",
+      "fieldname": "skip_past_events",
+      "fieldtype": "Check",
+      "label": "Ignorer les événements passés"
+    },
+    {
+      "fieldname": "skip_all_day_events",
+      "fieldtype": "Check",
+      "label": "Ignorer les événements toute la journée"
+    },
+    {
+      "fieldname": "column_break_conditions",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "business_hours_only",
+      "fieldtype": "Check",
+      "label": "Envoyer uniquement aux heures ouvrables"
+    },
+    {
+      "depends_on": "business_hours_only",
+      "default": "09:00",
+      "fieldname": "business_start_time",
+      "fieldtype": "Time",
+      "label": "Heure de début"
+    },
+    {
+      "depends_on": "business_hours_only",
+      "default": "18:00",
+      "fieldname": "business_end_time",
+      "fieldtype": "Time",
+      "label": "Heure de fin"
+    },
+    {
+      "fieldname": "exclude_weekends",
+      "fieldtype": "Check",
+      "label": "Exclure les week-ends"
+    },
+    {
+      "fieldname": "section_break_templates",
+      "fieldtype": "Section Break",
+      "label": "Templates Personnalisés"
+    },
+    {
+      "fieldname": "customer_template",
+      "fieldtype": "Text",
+      "label": "Template pour clients",
+      "description": "Template spécifique pour les SMS envoyés aux clients"
+    },
+    {
+      "fieldname": "employee_template",
+      "fieldtype": "Text",
+      "label": "Template pour employés",
+      "description": "Template spécifique pour les SMS envoyés aux employés"
+    },
+    {
+      "fieldname": "default_template",
+      "fieldtype": "Text",
+      "label": "Template par défaut",
+      "description": "Utilisé si aucun template spécifique n'est défini"
+    },
+    {
+      "fieldname": "column_break_templates",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "template_help",
+      "fieldtype": "HTML",
+      "options": "<div style='background: #f8f9fa; padding: 15px; border-radius: 5px;'><h6>Variables disponibles dans les templates:</h6><ul><li><code>{{subject}}</code> - Titre de l'événement</li><li><code>{{description}}</code> - Description de l'événement</li><li><code>{{start_date}}</code> - Date de début (format: 01/01/2024)</li><li><code>{{start_time}}</code> - Heure de début (format: 14:30)</li><li><code>{{event_name}}</code> - Nom complet de l'événement</li><li><code>{{customer_name}}</code> - Nom du client</li><li><code>{{employee_name}}</code> - Nom de l'employé</li><li><code>{{duration}}</code> - Durée en minutes</li><li><code>{{location}}</code> - Lieu de l'événement</li></ul><h6>Exemple:</h6><code>Rappel: RDV {{subject}} le {{start_date}} à {{start_time}} avec {{employee_name}}</code></div>"
+    },
+    {
+      "fieldname": "section_break_stats",
+      "fieldtype": "Section Break",
+      "label": "Statistiques"
+    },
+    {
+      "default": "0",
+      "fieldname": "total_reminders_sent",
+      "fieldtype": "Int",
+      "label": "Total rappels envoyés",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "fieldname": "reminders_sent_today",
+      "fieldtype": "Int",
+      "label": "Rappels envoyés aujourd'hui",
+      "read_only": 1
+    },
+    {
+      "fieldname": "last_reminder_sent",
+      "fieldtype": "Datetime",
+      "label": "Dernier rappel envoyé",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_stats",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "last_check_time",
+      "fieldtype": "Datetime",
+      "label": "Dernière vérification",
+      "read_only": 1
+    },
+    {
+      "fieldname": "next_check_time",
+      "fieldtype": "Datetime",
+      "label": "Prochaine vérification",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "fieldname": "failed_reminders_count",
+      "fieldtype": "Int",
+      "label": "Rappels échoués",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_break_test",
+      "fieldtype": "Section Break",
+      "label": "Test des Rappels"
+    },
+    {
+      "fieldname": "test_event",
+      "fieldtype": "Link",
+      "label": "Événement de test",
+      "options": "Event"
+    },
+    {
+      "fieldname": "test_customer_mobile",
+      "fieldtype": "Data",
+      "label": "Mobile client de test"
+    },
+    {
+      "fieldname": "test_employee_mobile",
+      "fieldtype": "Data",
+      "label": "Mobile employé de test"
+    },
+    {
+      "fieldname": "column_break_test",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "send_test_reminder",
+      "fieldtype": "Button",
+      "label": "Envoyer rappel de test"
+    },
+    {
+      "fieldname": "last_test_result",
+      "fieldtype": "Long Text",
+      "label": "Résultat du test",
+      "read_only": 1
+    }
+  ],
+  "issingle": 1,
+  "modified": "2024-01-01 12:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "OVH SMS Integration",
+  "name": "SMS Event Reminder",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "print": 1,
+      "read": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "read": 1,
+      "role": "SMS Manager",
+      "write": 1
+    },
+    {
+      "read": 1,
+      "role": "SMS User"
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1,
+  "translated_doctype": 1
+}
