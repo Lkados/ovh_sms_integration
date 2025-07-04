@@ -149,6 +149,10 @@ doc_events = {
 	},
 	"Purchase Order": {
 		"on_submit": "ovh_sms_integration.utils.sms_utils.send_purchase_order_sms"
+	},
+	"SMS Pricing Campaign": {
+		"validate": "ovh_sms_integration.ovh_sms_integration.doctype.sms_pricing_campaign.sms_pricing_campaign.validate_campaign",
+		"on_submit": "ovh_sms_integration.ovh_sms_integration.doctype.sms_pricing_campaign.sms_pricing_campaign.on_campaign_submit"
 	}
 }
 
