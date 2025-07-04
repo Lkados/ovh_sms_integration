@@ -7,28 +7,21 @@
     "customer",
     "customer_name",
     "customer_mobile",
-    "column_break_customer",
+    "column_break_1",
     "item_code",
     "item_name",
     "uom",
-    "section_break_pricing",
+    "column_break_2",
     "qty",
     "base_rate",
-    "margin_type",
     "margin_percent",
-    "margin_amount",
-    "column_break_pricing",
-    "rate_with_margin",
+    "final_price",
     "amount",
     "currency",
-    "section_break_sms",
+    "column_break_3",
     "selected_for_sending",
     "sms_sent",
-    "sms_status",
-    "column_break_sms",
-    "sms_sent_time",
-    "sms_error_message",
-    "customer_response"
+    "sms_status"
   ],
   "fields": [
     {
@@ -37,42 +30,47 @@
       "in_list_view": 1,
       "label": "Client",
       "options": "Customer",
-      "reqd": 1
+      "reqd": 1,
+      "width": "150px"
     },
     {
       "fetch_from": "customer.customer_name",
       "fieldname": "customer_name",
       "fieldtype": "Data",
       "in_list_view": 1,
-      "label": "Nom du client",
-      "read_only": 1
+      "label": "Nom Client",
+      "read_only": 1,
+      "width": "120px"
     },
     {
-      "fetch_from": "customer.mobile_no",
       "fieldname": "customer_mobile",
       "fieldtype": "Data",
-      "label": "Mobile client",
-      "reqd": 1
+      "in_list_view": 1,
+      "label": "Mobile",
+      "reqd": 1,
+      "width": "110px"
     },
     {
-      "fieldname": "column_break_customer",
+      "fieldname": "column_break_1",
       "fieldtype": "Column Break"
     },
     {
       "fieldname": "item_code",
       "fieldtype": "Link",
       "in_list_view": 1,
-      "label": "Code article",
+      "label": "Article",
       "options": "Item",
-      "reqd": 1
+      "reqd": 1,
+      "width": "120px"
     },
     {
       "fetch_from": "item_code.item_name",
       "fieldname": "item_name",
       "fieldtype": "Data",
       "in_list_view": 1,
-      "label": "Nom article",
-      "read_only": 1
+      "label": "Description",
+      "read_only": 1,
+      "width": "150px"
     },
     {
       "fetch_from": "item_code.stock_uom",
@@ -80,117 +78,90 @@
       "fieldtype": "Link",
       "label": "Unité",
       "options": "UOM",
-      "read_only": 1
+      "read_only": 1,
+      "width": "60px"
     },
     {
-      "fieldname": "section_break_pricing",
-      "fieldtype": "Section Break",
-      "label": "Tarification"
+      "fieldname": "column_break_2",
+      "fieldtype": "Column Break"
     },
     {
-      "default": "1",
       "fieldname": "qty",
       "fieldtype": "Float",
-      "label": "Quantité",
-      "precision": "2"
+      "in_list_view": 1,
+      "label": "Qté",
+      "default": "1",
+      "precision": "2",
+      "width": "60px"
     },
     {
       "fieldname": "base_rate",
       "fieldtype": "Currency",
-      "label": "Taux de base",
+      "in_list_view": 1,
+      "label": "Prix Base",
       "reqd": 1,
-      "description": "Taux de valorisation du produit"
+      "width": "90px"
     },
     {
-      "default": "Percentage",
-      "fieldname": "margin_type",
-      "fieldtype": "Select",
-      "label": "Type de marge",
-      "options": "Percentage\nAmount"
-    },
-    {
-      "depends_on": "eval:doc.margin_type=='Percentage'",
       "fieldname": "margin_percent",
       "fieldtype": "Percent",
-      "label": "Marge (%)"
+      "in_list_view": 1,
+      "label": "Marge %",
+      "default": "20",
+      "width": "70px"
     },
     {
-      "depends_on": "eval:doc.margin_type=='Amount'",
-      "fieldname": "margin_amount",
-      "fieldtype": "Currency",
-      "label": "Marge (Montant)"
-    },
-    {
-      "fieldname": "column_break_pricing",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "rate_with_margin",
+      "fieldname": "final_price",
       "fieldtype": "Currency",
       "in_list_view": 1,
-      "label": "Prix unitaire final",
-      "read_only": 1
+      "label": "Prix Final",
+      "read_only": 1,
+      "width": "90px"
     },
     {
       "fieldname": "amount",
       "fieldtype": "Currency",
       "in_list_view": 1,
-      "label": "Montant total",
-      "read_only": 1
+      "label": "Montant",
+      "read_only": 1,
+      "width": "90px"
     },
     {
-      "default": "EUR",
       "fieldname": "currency",
       "fieldtype": "Link",
       "label": "Devise",
-      "options": "Currency"
+      "options": "Currency",
+      "default": "EUR",
+      "width": "60px"
     },
     {
-      "fieldname": "section_break_sms",
-      "fieldtype": "Section Break",
-      "label": "Statut SMS"
+      "fieldname": "column_break_3",
+      "fieldtype": "Column Break"
     },
     {
-      "default": "1",
       "fieldname": "selected_for_sending",
       "fieldtype": "Check",
-      "label": "Sélectionné pour envoi"
+      "in_list_view": 1,
+      "label": "Envoi",
+      "default": "1",
+      "width": "50px"
     },
     {
       "fieldname": "sms_sent",
       "fieldtype": "Check",
-      "label": "SMS envoyé",
-      "read_only": 1
+      "in_list_view": 1,
+      "label": "Envoyé",
+      "read_only": 1,
+      "width": "60px"
     },
     {
-      "default": "En attente",
       "fieldname": "sms_status",
       "fieldtype": "Select",
       "label": "Statut SMS",
-      "options": "En attente\nEnvoyé\nÉchoué\nRépondu\nConverti",
-      "read_only": 1
-    },
-    {
-      "fieldname": "column_break_sms",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "sms_sent_time",
-      "fieldtype": "Datetime",
-      "label": "Heure d'envoi",
-      "read_only": 1
-    },
-    {
-      "fieldname": "sms_error_message",
-      "fieldtype": "Text",
-      "label": "Message d'erreur",
-      "read_only": 1
-    },
-    {
-      "fieldname": "customer_response",
-      "fieldtype": "Select",
-      "label": "Réponse client",
-      "options": "\nIntéressé\nPas intéressé\nDemande info\nCommandé\nPrix trop élevé\nDéjà équipé"
+      "options": "En attente\nEnvoyé\nÉchoué\nRépondu",
+      "default": "En attente",
+      "read_only": 1,
+      "width": "80px"
     }
   ],
   "istable": 1,
