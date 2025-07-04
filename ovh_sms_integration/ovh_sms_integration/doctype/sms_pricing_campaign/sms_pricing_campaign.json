@@ -1,355 +1,355 @@
 {
-	"actions": [],
-	"creation": "2024-01-01 12:00:00.000000",
-	"doctype": "DocType",
-	"engine": "InnoDB",
-	"field_order": [
-		"enabled",
-		"naming_series",
-		"title",
-		"campaign_date",
-		"column_break_basic",
-		"status",
-		"company",
-		"currency",
-		"section_break_items",
-		"pricing_items",
-		"section_break_totals",
-		"total_items",
-		"total_customers",
-		"total_sms_cost",
-		"column_break_totals",
-		"estimated_revenue",
-		"average_margin_percent",
-		"profit_potential",
-		"section_break_sms",
-		"sms_template",
-		"send_immediately",
-		"scheduled_send_time",
-		"column_break_sms",
-		"include_company_info",
-		"include_contact_info",
-		"custom_footer",
-		"section_break_sending",
-		"send_all_sms",
-		"send_selected_sms",
-		"preview_sms",
-		"column_break_sending",
-		"test_mobile",
-		"send_test_sms",
-		"section_break_results",
-		"sms_sent_count",
-		"sms_failed_count",
-		"last_sent_time",
-		"column_break_results",
-		"response_rate",
-		"conversion_rate",
-		"total_sales_generated",
-		"section_break_logs",
-		"sending_logs"
-	],
-	"fields": [
-		{
-			"default": "1",
-			"fieldname": "enabled",
-			"fieldtype": "Check",
-			"label": "Activé"
-		},
-		{
-			"fieldname": "naming_series",
-			"fieldtype": "Select",
-			"label": "Série de numérotation",
-			"options": "SMS-CAMP-.YYYY.-"
-			"reqd": 1
-		},
-		{
-			"fieldname": "title",
-			"fieldtype": "Data",
-			"label": "Titre de la campagne",
-			"reqd": 1
-		},
-		{
-			"default": "Today",
-			"fieldname": "campaign_date",
-			"fieldtype": "Date",
-			"label": "Date de campagne",
-			"reqd": 1
-		},
-		{
-			"fieldname": "column_break_basic",
-			"fieldtype": "Column Break"
-		},
-		{
-			"default": "Brouillon",
-			"fieldname": "status",
-			"fieldtype": "Select",
-			"label": "Statut",
-			"options": "Brouillon\nPrêt\nEnvoyé\nPartiellement envoyé\nAnnulé",
-			"read_only": 1
-		},
-		{
-			"fieldname": "company",
-			"fieldtype": "Link",
-			"label": "Société",
-			"options": "Company",
-			"remember_last_selected_value": 1
-		},
-		{
-			"fieldname": "currency",
-			"fieldtype": "Link",
-			"label": "Devise",
-			"options": "Currency",
-			"default": "EUR"
-		},
-		{
-			"fieldname": "section_break_items",
-			"fieldtype": "Section Break",
-			"label": "Articles et Clients"
-		},
-		{
-			"fieldname": "pricing_items",
-			"fieldtype": "Table",
-			"label": "Lignes de tarification",
-			"options": "SMS Pricing Item",
-			"reqd": 1
-		},
-		{
-			"fieldname": "section_break_totals",
-			"fieldtype": "Section Break",
-			"label": "Résumé"
-		},
-		{
-			"default": "0",
-			"fieldname": "total_items",
-			"fieldtype": "Int",
-			"label": "Total articles",
-			"read_only": 1
-		},
-		{
-			"default": "0",
-			"fieldname": "total_customers",
-			"fieldtype": "Int",
-			"label": "Total clients",
-			"read_only": 1
-		},
-		{
-			"default": "0",
-			"fieldname": "total_sms_cost",
-			"fieldtype": "Currency",
-			"label": "Coût SMS estimé",
-			"read_only": 1,
-			"options": "currency"
-		},
-		{
-			"fieldname": "column_break_totals",
-			"fieldtype": "Column Break"
-		},
-		{
-			"default": "0",
-			"fieldname": "estimated_revenue",
-			"fieldtype": "Currency",
-			"label": "Chiffre d'affaires potentiel",
-			"read_only": 1,
-			"options": "currency"
-		},
-		{
-			"default": "0",
-			"fieldname": "average_margin_percent",
-			"fieldtype": "Percent",
-			"label": "Marge moyenne",
-			"read_only": 1
-		},
-		{
-			"default": "0",
-			"fieldname": "profit_potential",
-			"fieldtype": "Currency",
-			"label": "Profit potentiel",
-			"read_only": 1,
-			"options": "currency"
-		},
-		{
-			"fieldname": "section_break_sms",
-			"fieldtype": "Section Break",
-			"label": "Configuration SMS"
-		},
-		{
-			"default": "Bonjour {{customer_name}}, nous vous proposons {{item_name}} au tarif de {{final_price}}€. Offre spéciale valable jusqu'au {{valid_until}}. Intéressé ? Contactez-nous !",
-			"fieldname": "sms_template",
-			"fieldtype": "Text",
-			"label": "Template SMS",
-			"description": "Variables: {{customer_name}}, {{item_name}}, {{item_code}}, {{base_price}}, {{margin_percent}}, {{final_price}}, {{currency}}, {{valid_until}}, {{company}}"
-		},
-		{
-			"fieldname": "send_immediately",
-			"fieldtype": "Check",
-			"label": "Envoyer immédiatement"
-		},
-		{
-			"depends_on": "eval:!doc.send_immediately",
-			"fieldname": "scheduled_send_time",
-			"fieldtype": "Datetime",
-			"label": "Programmé pour"
-		},
-		{
-			"fieldname": "column_break_sms",
-			"fieldtype": "Column Break"
-		},
-		{
-			"default": "1",
-			"fieldname": "include_company_info",
-			"fieldtype": "Check",
-			"label": "Inclure infos société"
-		},
-		{
-			"default": "1",
-			"fieldname": "include_contact_info",
-			"fieldtype": "Check",
-			"label": "Inclure contact"
-		},
-		{
-			"fieldname": "custom_footer",
-			"fieldtype": "Data",
-			"label": "Pied de page personnalisé"
-		},
-		{
-			"fieldname": "section_break_sending",
-			"fieldtype": "Section Break",
-			"label": "Envoi SMS"
-		},
-		{
-			"fieldname": "send_all_sms",
-			"fieldtype": "Button",
-			"label": "Envoyer à tous les clients"
-		},
-		{
-			"fieldname": "send_selected_sms",
-			"fieldtype": "Button",
-			"label": "Envoyer aux sélectionnés"
-		},
-		{
-			"fieldname": "preview_sms",
-			"fieldtype": "Button",
-			"label": "Aperçu SMS"
-		},
-		{
-			"fieldname": "column_break_sending",
-			"fieldtype": "Column Break"
-		},
-		{
-			"fieldname": "test_mobile",
-			"fieldtype": "Data",
-			"label": "Mobile de test"
-		},
-		{
-			"fieldname": "send_test_sms",
-			"fieldtype": "Button",
-			"label": "Envoyer SMS test"
-		},
-		{
-			"fieldname": "section_break_results",
-			"fieldtype": "Section Break",
-			"label": "Résultats d'envoi"
-		},
-		{
-			"default": "0",
-			"fieldname": "sms_sent_count",
-			"fieldtype": "Int",
-			"label": "SMS envoyés",
-			"read_only": 1
-		},
-		{
-			"default": "0",
-			"fieldname": "sms_failed_count",
-			"fieldtype": "Int",
-			"label": "SMS échoués",
-			"read_only": 1
-		},
-		{
-			"fieldname": "last_sent_time",
-			"fieldtype": "Datetime",
-			"label": "Dernier envoi",
-			"read_only": 1
-		},
-		{
-			"fieldname": "column_break_results",
-			"fieldtype": "Column Break"
-		},
-		{
-			"default": "0",
-			"fieldname": "response_rate",
-			"fieldtype": "Percent",
-			"label": "Taux de réponse",
-			"read_only": 1
-		},
-		{
-			"default": "0",
-			"fieldname": "conversion_rate",
-			"fieldtype": "Percent",
-			"label": "Taux de conversion",
-			"read_only": 1
-		},
-		{
-			"default": "0",
-			"fieldname": "total_sales_generated",
-			"fieldtype": "Currency",
-			"label": "Ventes générées",
-			"read_only": 1,
-			"options": "currency"
-		},
-		{
-			"fieldname": "section_break_logs",
-			"fieldtype": "Section Break",
-			"label": "Journal d'envoi"
-		},
-		{
-			"fieldname": "sending_logs",
-			"fieldtype": "Code",
-			"label": "Logs d'envoi",
-			"read_only": 1,
-			"options": "JSON"
-		}
-	],
-	"is_submittable": 1,
-	"modified": "2024-01-01 12:00:00.000000",
-	"modified_by": "Administrator",
-	"module": "OVH SMS Integration",
-	"name": "SMS Pricing Campaign",
-	"naming_rule": "By \"Naming Series\" field",
-	"owner": "Administrator",
-	"permissions": [
-		{
-			"create": 1,
-			"delete": 1,
-			"email": 1,
-			"print": 1,
-			"read": 1,
-			"role": "System Manager",
-			"share": 1,
-			"submit": 1,
-			"write": 1
-		},
-		{
-			"create": 1,
-			"print": 1,
-			"read": 1,
-			"role": "SMS Manager",
-			"share": 1,
-			"submit": 1,
-			"write": 1
-		},
-		{
-			"read": 1,
-			"role": "SMS User"
-		},
-		{
-			"create": 1,
-			"read": 1,
-			"role": "Sales Manager",
-			"write": 1
-		}
-	],
-	"sort_field": "modified",
-	"sort_order": "DESC",
-	"states": [],
-	"track_changes": 1
+  "actions": [],
+  "creation": "2024-01-01 12:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "enabled",
+    "naming_series",
+    "title",
+    "campaign_date",
+    "column_break_basic",
+    "status",
+    "company",
+    "currency",
+    "section_break_items",
+    "pricing_items",
+    "section_break_totals",
+    "total_items",
+    "total_customers",
+    "total_sms_cost",
+    "column_break_totals",
+    "estimated_revenue",
+    "average_margin_percent",
+    "profit_potential",
+    "section_break_sms",
+    "sms_template",
+    "send_immediately",
+    "scheduled_send_time",
+    "column_break_sms",
+    "include_company_info",
+    "include_contact_info",
+    "custom_footer",
+    "section_break_sending",
+    "send_all_sms",
+    "send_selected_sms",
+    "preview_sms",
+    "column_break_sending",
+    "test_mobile",
+    "send_test_sms",
+    "section_break_results",
+    "sms_sent_count",
+    "sms_failed_count",
+    "last_sent_time",
+    "column_break_results",
+    "response_rate",
+    "conversion_rate",
+    "total_sales_generated",
+    "section_break_logs",
+    "sending_logs"
+  ],
+  "fields": [
+    {
+      "default": "1",
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "label": "Activé"
+    },
+    {
+      "fieldname": "naming_series",
+      "fieldtype": "Select",
+      "label": "Série de numérotation",
+      "options": "SMS-CAMP-.YYYY.-",
+      "reqd": 1
+    },
+    {
+      "fieldname": "title",
+      "fieldtype": "Data",
+      "label": "Titre de la campagne",
+      "reqd": 1
+    },
+    {
+      "default": "Today",
+      "fieldname": "campaign_date",
+      "fieldtype": "Date",
+      "label": "Date de campagne",
+      "reqd": 1
+    },
+    {
+      "fieldname": "column_break_basic",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "Brouillon",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Statut",
+      "options": "Brouillon\nPrêt\nEnvoyé\nPartiellement envoyé\nAnnulé",
+      "read_only": 1
+    },
+    {
+      "fieldname": "company",
+      "fieldtype": "Link",
+      "label": "Société",
+      "options": "Company",
+      "remember_last_selected_value": 1
+    },
+    {
+      "fieldname": "currency",
+      "fieldtype": "Link",
+      "label": "Devise",
+      "options": "Currency",
+      "default": "EUR"
+    },
+    {
+      "fieldname": "section_break_items",
+      "fieldtype": "Section Break",
+      "label": "Articles et Clients"
+    },
+    {
+      "fieldname": "pricing_items",
+      "fieldtype": "Table",
+      "label": "Lignes de tarification",
+      "options": "SMS Pricing Item",
+      "reqd": 1
+    },
+    {
+      "fieldname": "section_break_totals",
+      "fieldtype": "Section Break",
+      "label": "Résumé"
+    },
+    {
+      "default": "0",
+      "fieldname": "total_items",
+      "fieldtype": "Int",
+      "label": "Total articles",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "fieldname": "total_customers",
+      "fieldtype": "Int",
+      "label": "Total clients",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "fieldname": "total_sms_cost",
+      "fieldtype": "Currency",
+      "label": "Coût SMS estimé",
+      "read_only": 1,
+      "options": "currency"
+    },
+    {
+      "fieldname": "column_break_totals",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "0",
+      "fieldname": "estimated_revenue",
+      "fieldtype": "Currency",
+      "label": "Chiffre d'affaires potentiel",
+      "read_only": 1,
+      "options": "currency"
+    },
+    {
+      "default": "0",
+      "fieldname": "average_margin_percent",
+      "fieldtype": "Percent",
+      "label": "Marge moyenne",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "fieldname": "profit_potential",
+      "fieldtype": "Currency",
+      "label": "Profit potentiel",
+      "read_only": 1,
+      "options": "currency"
+    },
+    {
+      "fieldname": "section_break_sms",
+      "fieldtype": "Section Break",
+      "label": "Configuration SMS"
+    },
+    {
+      "default": "Bonjour {{customer_name}}, nous vous proposons {{item_name}} au tarif de {{final_price}}€. Offre spéciale valable jusqu'au {{valid_until}}. Intéressé ? Contactez-nous !",
+      "fieldname": "sms_template",
+      "fieldtype": "Text",
+      "label": "Template SMS",
+      "description": "Variables: {{customer_name}}, {{item_name}}, {{item_code}}, {{base_price}}, {{margin_percent}}, {{final_price}}, {{currency}}, {{valid_until}}, {{company}}"
+    },
+    {
+      "fieldname": "send_immediately",
+      "fieldtype": "Check",
+      "label": "Envoyer immédiatement"
+    },
+    {
+      "depends_on": "eval:!doc.send_immediately",
+      "fieldname": "scheduled_send_time",
+      "fieldtype": "Datetime",
+      "label": "Programmé pour"
+    },
+    {
+      "fieldname": "column_break_sms",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "1",
+      "fieldname": "include_company_info",
+      "fieldtype": "Check",
+      "label": "Inclure infos société"
+    },
+    {
+      "default": "1",
+      "fieldname": "include_contact_info",
+      "fieldtype": "Check",
+      "label": "Inclure contact"
+    },
+    {
+      "fieldname": "custom_footer",
+      "fieldtype": "Data",
+      "label": "Pied de page personnalisé"
+    },
+    {
+      "fieldname": "section_break_sending",
+      "fieldtype": "Section Break",
+      "label": "Envoi SMS"
+    },
+    {
+      "fieldname": "send_all_sms",
+      "fieldtype": "Button",
+      "label": "Envoyer à tous les clients"
+    },
+    {
+      "fieldname": "send_selected_sms",
+      "fieldtype": "Button",
+      "label": "Envoyer aux sélectionnés"
+    },
+    {
+      "fieldname": "preview_sms",
+      "fieldtype": "Button",
+      "label": "Aperçu SMS"
+    },
+    {
+      "fieldname": "column_break_sending",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "test_mobile",
+      "fieldtype": "Data",
+      "label": "Mobile de test"
+    },
+    {
+      "fieldname": "send_test_sms",
+      "fieldtype": "Button",
+      "label": "Envoyer SMS test"
+    },
+    {
+      "fieldname": "section_break_results",
+      "fieldtype": "Section Break",
+      "label": "Résultats d'envoi"
+    },
+    {
+      "default": "0",
+      "fieldname": "sms_sent_count",
+      "fieldtype": "Int",
+      "label": "SMS envoyés",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "fieldname": "sms_failed_count",
+      "fieldtype": "Int",
+      "label": "SMS échoués",
+      "read_only": 1
+    },
+    {
+      "fieldname": "last_sent_time",
+      "fieldtype": "Datetime",
+      "label": "Dernier envoi",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_results",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "0",
+      "fieldname": "response_rate",
+      "fieldtype": "Percent",
+      "label": "Taux de réponse",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "fieldname": "conversion_rate",
+      "fieldtype": "Percent",
+      "label": "Taux de conversion",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "fieldname": "total_sales_generated",
+      "fieldtype": "Currency",
+      "label": "Ventes générées",
+      "read_only": 1,
+      "options": "currency"
+    },
+    {
+      "fieldname": "section_break_logs",
+      "fieldtype": "Section Break",
+      "label": "Journal d'envoi"
+    },
+    {
+      "fieldname": "sending_logs",
+      "fieldtype": "Code",
+      "label": "Logs d'envoi",
+      "read_only": 1,
+      "options": "JSON"
+    }
+  ],
+  "is_submittable": 1,
+  "modified": "2024-01-01 12:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "OVH SMS Integration",
+  "name": "SMS Pricing Campaign",
+  "naming_rule": "By \"Naming Series\" field",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "print": 1,
+      "read": 1,
+      "role": "System Manager",
+      "share": 1,
+      "submit": 1,
+      "write": 1
+    },
+    {
+      "create": 1,
+      "print": 1,
+      "read": 1,
+      "role": "SMS Manager",
+      "share": 1,
+      "submit": 1,
+      "write": 1
+    },
+    {
+      "read": 1,
+      "role": "SMS User"
+    },
+    {
+      "create": 1,
+      "read": 1,
+      "role": "Sales Manager",
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
 }
