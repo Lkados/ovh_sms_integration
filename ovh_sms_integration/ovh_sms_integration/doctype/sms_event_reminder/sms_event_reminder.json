@@ -58,11 +58,11 @@
       "label": "Configuration des Rappels"
     },
     {
-      "default": "entretien",
+      "default": "Installation,entretien,Maintenance",
       "fieldname": "event_type_filter",
       "fieldtype": "Data",
-      "label": "Type d'événement à surveiller",
-      "description": "Mot-clé présent dans le titre de l'événement (ex: entretien, rdv, maintenance)"
+      "label": "Types d'événement à surveiller",
+      "description": "Types d'événements séparés par des virgules (ex: Installation,Maintenance,entretien)"
     },
     {
       "default": "24",
@@ -72,11 +72,11 @@
       "description": "Nombre d'heures avant l'événement pour envoyer le rappel"
     },
     {
-      "default": "Rappel : Vous avez un rendez-vous {{subject}} prévu le {{start_date}} à {{start_time}}. Merci de vous présenter à l'heure.",
+      "default": "Rappel {{type}} : Bonjour {{client}}, vous avez un rendez-vous {{type}} prévu le {{start_date}} à {{start_time}} pour {{article}}. Référence: {{reference}}. Merci de vous présenter à l'heure.",
       "fieldname": "reminder_message_template",
       "fieldtype": "Text",
       "label": "Template de message par défaut",
-      "description": "Variables disponibles: {{subject}}, {{description}}, {{start_date}}, {{start_time}}, {{event_name}}, {{customer_name}}, {{employee_name}}"
+      "description": "Variables disponibles: {{subject}}, {{client}}, {{type}}, {{article}}, {{reference}}, {{start_date}}, {{start_time}}, {{appareil}}, {{tel_client}}"
     },
     {
       "fieldname": "column_break_config",
@@ -186,7 +186,7 @@
     {
       "fieldname": "template_help",
       "fieldtype": "HTML",
-      "options": "<div style='background: #f8f9fa; padding: 15px; border-radius: 5px;'><h6>Variables disponibles dans les templates:</h6><ul><li><code>{{subject}}</code> - Titre de l'événement</li><li><code>{{description}}</code> - Description de l'événement</li><li><code>{{start_date}}</code> - Date de début (format: 01/01/2024)</li><li><code>{{start_time}}</code> - Heure de début (format: 14:30)</li><li><code>{{event_name}}</code> - Nom complet de l'événement</li><li><code>{{customer_name}}</code> - Nom du client</li><li><code>{{employee_name}}</code> - Nom de l'employé</li><li><code>{{duration}}</code> - Durée en minutes</li><li><code>{{location}}</code> - Lieu de l'événement</li></ul><h6>Exemple:</h6><code>Rappel: RDV {{subject}} le {{start_date}} à {{start_time}} avec {{employee_name}}</code></div>"
+      "options": "<div style='background: #f8f9fa; padding: 15px; border-radius: 5px;'><h6>Variables disponibles dans les templates:</h6><ul><li><code>{{subject}}</code> - Titre de l'événement</li><li><code>{{description}}</code> - Description complète de l'événement</li><li><code>{{start_date}}</code> - Date de début (format: 01/01/2024)</li><li><code>{{start_time}}</code> - Heure de début (format: 14:30)</li><li><code>{{client}}</code> - Nom du client extrait</li><li><code>{{reference}}</code> - Référence de la commande</li><li><code>{{type}}</code> - Type d'intervention (Installation, Maintenance, etc.)</li><li><code>{{article}}</code> - Référence article</li><li><code>{{appareil}}</code> - Appareil concerné</li><li><code>{{tel_client}}</code> - Téléphone client</li><li><code>{{email_client}}</code> - Email client</li><li><code>{{camion_requis}}</code> - Type de camion</li><li><code>{{duration}}</code> - Durée en minutes</li><li><code>{{location}}</code> - Lieu de l'événement</li></ul><h6>Exemple Installation:</h6><code>Rappel {{type}} : Bonjour {{client}}, RDV {{type}} le {{start_date}} à {{start_time}} pour {{article}}. Réf: {{reference}}</code><h6>Exemple Maintenance:</h6><code>Intervention {{type}} prévue le {{start_date}} à {{start_time}}. Appareil: {{appareil}}. Contact: {{tel_client}}</code></div>"
     },
     {
       "fieldname": "section_break_stats",

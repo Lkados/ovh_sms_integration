@@ -57,7 +57,7 @@ frappe.ui.form.on("SMS Event Reminder", {
 				frappe.call({
 					method: "ovh_sms_integration.ovh_sms_integration.doctype.sms_event_reminder.sms_event_reminder.get_pending_events",
 					callback: function (r) {
-						if (r.message) {
+						if (r.message && r.message.success) {
 							const events = r.message.events || [];
 							let message = `<div style="font-size: 14px;">
 								<p><strong>Événements nécessitant un rappel:</strong></p>`;
@@ -81,6 +81,14 @@ frappe.ui.form.on("SMS Event Reminder", {
 								message: message,
 								indicator: "blue",
 							});
+						} else {
+							frappe.msgprint({
+								title: __("Erreur"),
+								message:
+									r.message?.message ||
+									"Erreur lors de la récupération des événements",
+								indicator: "red",
+							});
 						}
 					},
 				});
@@ -96,15 +104,21 @@ frappe.ui.form.on("SMS Event Reminder", {
 					__("Voulez-vous forcer l'envoi des rappels maintenant ?"),
 					function () {
 						frappe.call({
-							method: "ovh_sms_integration.ovh_sms_integration.doctype.sms_event_reminder.sms_event_reminder.process_event_reminders",
+							method: "ovh_sms_integration.ovh_sms_integration.doctype.sms_event_reminder.sms_event_reminder.manual_process_reminders",
 							callback: function (r) {
-								frappe.msgprint({
-									title: __("Rappels Traités"),
-									message: __(
-										"Le traitement des rappels a été lancé. Vérifiez les logs pour les détails."
-									),
-									indicator: "green",
-								});
+								if (r.message && r.message.success) {
+									frappe.msgprint({
+										title: __("Rappels Traités"),
+										message: r.message.message,
+										indicator: "green",
+									});
+								} else {
+									frappe.msgprint({
+										title: __("Erreur"),
+										message: r.message?.message || "Erreur lors du traitement",
+										indicator: "red",
+									});
+								}
 								frm.refresh();
 							},
 						});

@@ -83,7 +83,7 @@ app_license = "mit"
 # ------------
 
 # before_install = "ovh_sms_integration.install.before_install"
-# after_install = "ovh_sms_integration.install.after_install"
+after_install = "ovh_sms_integration.install.after_install"
 
 # Uninstallation
 # ------------

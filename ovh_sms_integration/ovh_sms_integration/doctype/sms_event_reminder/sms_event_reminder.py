@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 import frappe
+import requests
+import hashlib
+import datetime
+import re
 from frappe.model.document import Document
 from frappe import _
 from datetime import datetime, timedelta
-import re
 from jinja2 import Template
 
 class SMSEventReminder(Document):
@@ -67,10 +70,64 @@ class SMSEventReminder(Document):
 		
 		return True
 
-	def format_message(self, template, event_doc, customer_name=None, employee_name=None):
-		"""Formate le message avec les données de l'événement"""
+	def parse_event_data(self, description):
+		"""Parse toutes les données structurées de l'événement"""
+		if not description:
+			return {}
+		
 		try:
-			# Préparation du contexte
+			data = {}
+			import re
+			
+			# Patterns pour extraire les informations
+			patterns = {
+				'client': r'\*\*Client:\*\*\s*([^\n\r*]+)',
+				'reference': r'\*\*Référence:\*\*\s*([^\n\r*]+)',
+				'type': r'\*\*Type:\*\*\s*([^\n\r*]+)',
+				'article': r'\*\*Article:\*\*\s*([^\n\r*]+)',
+				'tel_client': r'\*\*Tél client:\*\*\s*([^\n\r*]+)',
+				'email_client': r'\*\*Email client:\*\*\s*([^\n\r*]+)',
+				'appareil': r'\*\*Appareil:\*\*\s*([^\n\r*]+)',
+				'camion_requis': r'\*\*Camion requis:\*\*\s*([^\n\r*]+)'
+			}
+			
+			# Extraction avec markdown
+			for key, pattern in patterns.items():
+				match = re.search(pattern, description)
+				if match:
+					data[key] = match.group(1).strip()
+			
+			# Si pas trouvé avec markdown, essayer sans
+			if not data:
+				patterns_simple = {
+					'client': r'Client:\s*([^\n\r]+)',
+					'reference': r'Référence:\s*([^\n\r]+)',
+					'type': r'Type:\s*([^\n\r]+)',
+					'article': r'Article:\s*([^\n\r]+)',
+					'tel_client': r'Tél client:\s*([^\n\r]+)',
+					'email_client': r'Email client:\s*([^\n\r]+)',
+					'appareil': r'Appareil:\s*([^\n\r]+)',
+					'camion_requis': r'Camion requis:\s*([^\n\r]+)'
+				}
+				
+				for key, pattern in patterns_simple.items():
+					match = re.search(pattern, description)
+					if match:
+						data[key] = match.group(1).strip()
+			
+			return data
+			
+		except Exception as e:
+			frappe.log_error(f"Erreur parsing données événement: {e}")
+			return {}
+
+	def format_message(self, template, event_doc, customer_name=None, employee_name=None):
+		"""Formate le message avec les données de l'événement - VERSION MISE À JOUR"""
+		try:
+			# Parse des données structurées
+			event_data = self.parse_event_data(event_doc.description)
+			
+			# Préparation du contexte de base
 			context = {
 				'subject': event_doc.subject or '',
 				'description': event_doc.description or '',
@@ -81,6 +138,18 @@ class SMSEventReminder(Document):
 				'customer_name': customer_name or '',
 				'employee_name': employee_name or ''
 			}
+			
+			# Ajout des données parsées
+			context.update({
+				'client': event_data.get('client', ''),
+				'reference': event_data.get('reference', ''),
+				'type': event_data.get('type', ''),
+				'article': event_data.get('article', ''),
+				'tel_client': event_data.get('tel_client', ''),
+				'email_client': event_data.get('email_client', ''),
+				'appareil': event_data.get('appareil', ''),
+				'camion_requis': event_data.get('camion_requis', '')
+			})
 			
 			# Calcul de la durée si disponible
 			if event_doc.starts_on and event_doc.ends_on:
@@ -97,8 +166,30 @@ class SMSEventReminder(Document):
 			frappe.log_error(f"Erreur formatage message rappel: {e}")
 			return template  # Retourne le template original en cas d'erreur
 
+	def extract_event_type_from_description(self, description):
+		"""Extrait le type d'événement depuis la description structurée"""
+		if not description:
+			return None
+		
+		try:
+			# Recherche du pattern "Type:" dans la description
+			import re
+			type_match = re.search(r'\*\*Type:\*\*\s*([^\n\r*]+)', description)
+			if type_match:
+				return type_match.group(1).strip()
+			
+			# Essayer aussi sans les ** (markdown)
+			type_match = re.search(r'Type:\s*([^\n\r]+)', description)
+			if type_match:
+				return type_match.group(1).strip()
+			
+			return None
+		except Exception as e:
+			frappe.log_error(f"Erreur extraction type événement: {e}")
+			return None
+
 	def get_events_for_reminder(self):
-		"""Récupère les événements nécessitant un rappel"""
+		"""Récupère les événements nécessitant un rappel - VERSION MISE À JOUR"""
 		if not self.enabled:
 			return []
 		
@@ -115,14 +206,13 @@ class SMSEventReminder(Document):
 			
 			time_condition = " OR ".join(conditions)
 			
-			# Construction de la requête
+			# Récupération de TOUS les événements dans la plage horaire
 			query = f"""
 				SELECT name, subject, description, starts_on, ends_on, 
 					   event_participants, location
 				FROM `tabEvent`
 				WHERE ({time_condition})
 				AND docstatus = 1
-				AND subject LIKE %s
 			"""
 			
 			if self.skip_past_events:
@@ -131,20 +221,42 @@ class SMSEventReminder(Document):
 			if self.skip_all_day_events:
 				query += " AND all_day = 0"
 			
-			# Exécution de la requête
-			events = frappe.db.sql(query, (f"%{self.event_type_filter}%",), as_dict=True)
+			# Exécution de la requête pour récupérer tous les événements
+			all_events = frappe.db.sql(query, as_dict=True)
+			
+			# Filtrage par type extrait de la description
+			filtered_events = []
+			event_types_to_filter = [t.strip() for t in self.event_type_filter.split(',')]
+			
+			for event in all_events:
+				# Méthode 1: Extraire le type depuis la description structurée
+				event_type = self.extract_event_type_from_description(event.description)
+				
+				# Méthode 2: Fallback - chercher dans le titre si pas trouvé dans description
+				if not event_type:
+					for filter_type in event_types_to_filter:
+						if filter_type.lower() in (event.subject or '').lower():
+							event_type = filter_type
+							break
+				
+				# Vérifier si le type correspond aux filtres
+				if event_type:
+					for filter_type in event_types_to_filter:
+						if filter_type.lower() in event_type.lower():
+							filtered_events.append(event)
+							break
 			
 			# Filtrage par durée minimum
 			if self.minimum_event_duration > 0:
-				filtered_events = []
-				for event in events:
+				final_events = []
+				for event in filtered_events:
 					if event.ends_on and event.starts_on:
 						duration = (event.ends_on - event.starts_on).total_seconds() / 60
 						if duration >= self.minimum_event_duration:
-							filtered_events.append(event)
-				events = filtered_events
+							final_events.append(event)
+				filtered_events = final_events
 			
-			return events
+			return filtered_events
 			
 		except Exception as e:
 			frappe.log_error(f"Erreur récupération événements: {e}")
@@ -298,11 +410,26 @@ class SMSEventReminder(Document):
 		except Exception as e:
 			frappe.log_error(f"Erreur envoi rappels événements: {e}")
 
+	def get_best_sender(self):
+		"""Retourne le meilleur expéditeur disponible depuis OVH SMS Settings"""
+		try:
+			sms_settings = frappe.get_single('OVH SMS Settings')
+			if not sms_settings.enabled:
+				return "ERPNext"  # Fallback
+			
+			return sms_settings.get_best_sender()
+		except Exception as e:
+			frappe.log_error(f"Erreur récupération expéditeur: {e}")
+			return "ERPNext"  # Fallback
+
 	def send_sms_reminder(self, message, mobile):
 		"""Envoie un SMS de rappel via l'intégration OVH"""
 		try:
-			from ovh_sms_integration.ovh_sms_integration.doctype.ovh_sms_settings.ovh_sms_settings import send_sms
-			return send_sms(message, mobile)
+			sms_settings = frappe.get_single('OVH SMS Settings')
+			if not sms_settings.enabled:
+				return {"success": False, "message": "OVH SMS non activé"}
+			
+			return sms_settings.send_sms(message, mobile)
 		except Exception as e:
 			frappe.log_error(f"Erreur envoi SMS rappel: {e}")
 			return {"success": False, "message": str(e)}
