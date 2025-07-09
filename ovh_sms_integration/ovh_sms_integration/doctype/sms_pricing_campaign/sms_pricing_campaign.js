@@ -98,9 +98,13 @@ frappe.ui.form.on("SMS Pricing Campaign", {
 				);
 				has_errors = true;
 			}
-			if (!item.base_rate || item.base_rate <= 0) {
+			if (!item.valuation_rate || item.valuation_rate <= 0) {
 				frappe.msgprint(
-					__(`Prix de base requis pour ${item.item_name || "ligne " + (index + 1)}`)
+					__(
+						`Taux de valorisation requis pour ${
+							item.item_name || "ligne " + (index + 1)
+						}`
+					)
 				);
 				has_errors = true;
 			}
@@ -113,12 +117,8 @@ frappe.ui.form.on("SMS Pricing Campaign", {
 
 	company: function (frm) {
 		if (frm.doc.company) {
-			// Mise à jour de la devise par défaut
-			frappe.db.get_value("Company", frm.doc.company, "default_currency").then((r) => {
-				if (r.message && r.message.default_currency) {
-					frm.set_value("currency", r.message.default_currency);
-				}
-			});
+			// Force EUR comme devise par défaut
+			frm.set_value("currency", "EUR");
 		}
 	},
 
@@ -135,9 +135,9 @@ frappe.ui.form.on("SMS Pricing Item", {
 		// Valeurs par défaut pour nouvelle ligne
 		const row = locals[cdt][cdn];
 		row.qty = 1;
-		row.margin_percent = 20;
+		row.margin_amount_eur = 50; // Marge par défaut de 50€
 		row.selected_for_sending = 1;
-		row.currency = frm.doc.currency || "EUR";
+		row.currency = "EUR"; // Force EUR
 		row.sms_status = "En attente";
 		frm.refresh_field("pricing_items");
 	},
@@ -183,6 +183,23 @@ frappe.ui.form.on("SMS Pricing Item", {
 	item_code: function (frm, cdt, cdn) {
 		const row = locals[cdt][cdn];
 		if (row.item_code) {
+			// Récupération du taux de valorisation
+			get_item_valuation_rate(row.item_code).then((valuation_rate) => {
+				if (valuation_rate > 0) {
+					frappe.model.set_value(cdt, cdn, "valuation_rate", valuation_rate);
+					frappe.show_alert({
+						message: __(`Taux valorisation: ${valuation_rate}€`),
+						indicator: "blue",
+					});
+					calculate_item_total(frm, cdt, cdn);
+				} else {
+					frappe.show_alert({
+						message: __("Aucun taux de valorisation trouvé"),
+						indicator: "orange",
+					});
+				}
+			});
+
 			// Récupération automatique des détails de l'article
 			frappe.call({
 				method: "frappe.client.get",
@@ -197,20 +214,6 @@ frappe.ui.form.on("SMS Pricing Item", {
 						// Nom et UOM
 						frappe.model.set_value(cdt, cdn, "item_name", item.item_name);
 						frappe.model.set_value(cdt, cdn, "uom", item.stock_uom);
-
-						// Prix de base (valorisation ou prix standard)
-						if (item.standard_rate && item.standard_rate > 0) {
-							frappe.model.set_value(cdt, cdn, "base_rate", item.standard_rate);
-							calculate_item_total(frm, cdt, cdn);
-						} else {
-							// Essayer de récupérer le dernier prix de valorisation
-							get_item_valuation_rate(row.item_code).then((rate) => {
-								if (rate > 0) {
-									frappe.model.set_value(cdt, cdn, "base_rate", rate);
-									calculate_item_total(frm, cdt, cdn);
-								}
-							});
-						}
 					}
 				},
 			});
@@ -221,11 +224,11 @@ frappe.ui.form.on("SMS Pricing Item", {
 		calculate_item_total(frm, cdt, cdn);
 	},
 
-	base_rate: function (frm, cdt, cdn) {
+	valuation_rate: function (frm, cdt, cdn) {
 		calculate_item_total(frm, cdt, cdn);
 	},
 
-	margin_percent: function (frm, cdt, cdn) {
+	margin_amount_eur: function (frm, cdt, cdn) {
 		calculate_item_total(frm, cdt, cdn);
 	},
 
@@ -245,17 +248,25 @@ frappe.ui.form.on("SMS Pricing Item", {
 function calculate_item_total(frm, cdt, cdn) {
 	const row = locals[cdt][cdn];
 
-	if (!row.base_rate || !row.qty) {
+	if (!row.valuation_rate || !row.qty) {
 		return;
 	}
 
-	const base_amount = row.base_rate * row.qty;
-	const margin_amount = (base_amount * (row.margin_percent || 0)) / 100;
-	const final_price = row.base_rate + margin_amount / row.qty;
-	const total_amount = final_price * row.qty;
+	// Nouvelle logique: Prix final = Taux valorisation + Marge euros
+	const final_price = (row.valuation_rate || 0) + (row.margin_amount_eur || 0);
+	const total_amount = final_price * (row.qty || 1);
 
 	frappe.model.set_value(cdt, cdn, "final_price", final_price);
 	frappe.model.set_value(cdt, cdn, "amount", total_amount);
+
+	// Affichage du pourcentage de marge pour information
+	if (row.valuation_rate > 0) {
+		const margin_percent = ((row.margin_amount_eur || 0) / row.valuation_rate) * 100;
+		frappe.show_alert({
+			message: __(`Marge: ${margin_percent.toFixed(1)}%`),
+			indicator: "blue",
+		});
+	}
 
 	// Recalcul des totaux
 	setTimeout(() => {
@@ -272,6 +283,7 @@ function calculate_campaign_totals(frm) {
 	let unique_customers = new Set();
 	let total_amount = 0;
 	let total_margin = 0;
+	let total_valuation = 0;
 
 	frm.doc.pricing_items.forEach((item) => {
 		if (item.customer) {
@@ -279,9 +291,13 @@ function calculate_campaign_totals(frm) {
 		}
 		total_amount += item.amount || 0;
 
-		const base_amount = (item.base_rate || 0) * (item.qty || 1);
-		const margin_amount = (item.amount || 0) - base_amount;
-		total_margin += margin_amount;
+		// Calcul de la marge totale (marge unitaire × quantité)
+		const item_margin = (item.margin_amount_eur || 0) * (item.qty || 1);
+		total_margin += item_margin;
+
+		// Calcul du coût total de valorisation
+		const item_valuation = (item.valuation_rate || 0) * (item.qty || 1);
+		total_valuation += item_valuation;
 	});
 
 	// Mise à jour des champs
@@ -291,10 +307,10 @@ function calculate_campaign_totals(frm) {
 	frm.set_value("profit_potential", total_margin);
 	frm.set_value("total_sms_cost", unique_customers.size * 0.1); // 0.10€ par SMS
 
-	// Calcul marge moyenne
-	if (total_amount > 0) {
-		const avg_margin = (total_margin / (total_amount - total_margin)) * 100;
-		frm.set_value("average_margin_percent", avg_margin);
+	// Calcul pourcentage de marge moyen
+	if (total_valuation > 0) {
+		const avg_margin_percent = (total_margin / total_valuation) * 100;
+		frm.set_value("average_margin_percent", avg_margin_percent);
 	}
 }
 
@@ -343,16 +359,16 @@ function add_quick_item(frm) {
 				reqd: 1,
 			},
 			{
-				fieldname: "base_rate",
-				label: __("Prix de base"),
+				fieldname: "valuation_rate",
+				label: __("Taux Valorisation (€)"),
 				fieldtype: "Currency",
 				reqd: 1,
 			},
 			{
-				fieldname: "margin_percent",
-				label: __("Marge (%)"),
-				fieldtype: "Percent",
-				default: 20,
+				fieldname: "margin_amount_eur",
+				label: __("Marge (€)"),
+				fieldtype: "Currency",
+				default: 50,
 			},
 		],
 		primary_action: function () {
@@ -363,10 +379,10 @@ function add_quick_item(frm) {
 				row.customer = values.customer;
 				row.item_code = values.item_code;
 				row.qty = values.qty;
-				row.base_rate = values.base_rate;
-				row.margin_percent = values.margin_percent;
+				row.valuation_rate = values.valuation_rate;
+				row.margin_amount_eur = values.margin_amount_eur;
 				row.selected_for_sending = 1;
-				row.currency = frm.doc.currency;
+				row.currency = "EUR";
 
 				// Calculer et rafraîchir
 				calculate_item_total(frm, row.doctype, row.name);
@@ -397,17 +413,17 @@ function import_items_dialog(frm) {
 				reqd: 1,
 			},
 			{
-				fieldname: "margin_percent",
-				label: __("Marge par défaut (%)"),
-				fieldtype: "Percent",
-				default: 20,
+				fieldname: "margin_amount_eur",
+				label: __("Marge par défaut (€)"),
+				fieldtype: "Currency",
+				default: 50,
 			},
 			{
 				fieldname: "items_data",
-				label: __("Articles (un par ligne: code_article,quantité,prix_base)"),
+				label: __("Articles (un par ligne: code_article,quantité,taux_valorisation)"),
 				fieldtype: "Text",
 				reqd: 1,
-				description: __("Format: ITEM001,1,100<br>ITEM002,2,50"),
+				description: __("Format: ITEM001,1,100<br>ITEM002,2,75"),
 			},
 		],
 		primary_action: function () {
@@ -436,10 +452,10 @@ function import_items_from_text(frm, values) {
 				row.customer = values.customer;
 				row.item_code = parts[0].trim();
 				row.qty = parseFloat(parts[1].trim()) || 1;
-				row.base_rate = parseFloat(parts[2].trim()) || 0;
-				row.margin_percent = values.margin_percent;
+				row.valuation_rate = parseFloat(parts[2].trim()) || 0;
+				row.margin_amount_eur = values.margin_amount_eur;
 				row.selected_for_sending = 1;
-				row.currency = frm.doc.currency;
+				row.currency = "EUR";
 				added_count++;
 			}
 		}
@@ -695,7 +711,7 @@ function generate_sms_preview(template, item) {
 		.replace(/{{customer_name}}/g, item.customer_name || "Client Test")
 		.replace(/{{item_name}}/g, item.item_name || "Article Test")
 		.replace(/{{final_price}}/g, item.final_price || "0")
-		.replace(/{{currency}}/g, item.currency || "EUR");
+		.replace(/{{currency}}/g, "EUR");
 }
 
 function validate_sms_template(template) {
@@ -721,23 +737,16 @@ function validate_sms_template(template) {
 
 async function get_item_valuation_rate(item_code) {
 	try {
+		// Appel de l'API pour récupérer le taux de valorisation
 		const response = await frappe.call({
-			method: "frappe.client.get_list",
+			method: "ovh_sms_integration.ovh_sms_integration.doctype.sms_pricing_campaign.sms_pricing_campaign.get_item_valuation_rate",
 			args: {
-				doctype: "Stock Ledger Entry",
-				filters: {
-					item_code: item_code,
-					valuation_rate: [">", 0],
-				},
-				fields: ["valuation_rate"],
-				order_by: "posting_date desc, posting_time desc",
-				limit_start: 0,
-				limit_page_length: 1,
+				item_code: item_code,
 			},
 		});
 
-		if (response.message && response.message.length > 0) {
-			return response.message[0].valuation_rate;
+		if (response.message && response.message.success) {
+			return response.message.rate;
 		}
 		return 0;
 	} catch (error) {

@@ -73,7 +73,8 @@
       "fieldtype": "Link",
       "label": "Devise",
       "options": "Currency",
-      "default": "EUR"
+      "default": "EUR",
+      "read_only": 1
     },
     {
       "fieldname": "enabled",
@@ -92,7 +93,7 @@
       "label": "Lignes de tarification",
       "options": "SMS Pricing Item",
       "reqd": 1,
-      "description": "Ajoutez les articles et clients pour cette campagne"
+      "description": "Ajoutez les articles (taux valorisation + marge en euros) et clients pour cette campagne"
     },
     {
       "fieldname": "section_break_totals",
@@ -118,7 +119,7 @@
       "fieldtype": "Currency",
       "label": "Chiffre d'affaires potentiel",
       "read_only": 1,
-      "options": "currency",
+      "options": "EUR",
       "default": 0
     },
     {
@@ -130,24 +131,26 @@
       "fieldtype": "Currency",
       "label": "Coût SMS estimé",
       "read_only": 1,
-      "options": "currency",
+      "options": "EUR",
       "default": 0,
       "description": "Basé sur 0.10€ par SMS"
     },
     {
       "fieldname": "average_margin_percent",
       "fieldtype": "Percent",
-      "label": "Marge moyenne",
+      "label": "Marge moyenne (%)",
       "read_only": 1,
-      "default": 0
+      "default": 0,
+      "description": "Pourcentage moyen calculé depuis les marges en euros"
     },
     {
       "fieldname": "profit_potential",
       "fieldtype": "Currency",
       "label": "Profit potentiel",
       "read_only": 1,
-      "options": "currency",
-      "default": 0
+      "options": "EUR",
+      "default": 0,
+      "description": "Somme des marges en euros de tous les articles"
     },
     {
       "fieldname": "section_break_sms",
@@ -158,8 +161,8 @@
       "fieldname": "sms_template",
       "fieldtype": "Text",
       "label": "Template SMS",
-      "default": "Bonjour {{customer_name}}, nous vous proposons {{item_name}} au prix de {{final_price}}€. Offre spéciale ! Contactez-nous pour plus d'infos.",
-      "description": "Variables: {{customer_name}}, {{item_name}}, {{item_code}}, {{final_price}}, {{currency}}"
+      "default": "Bonjour {{customer_name}}, nous vous proposons {{item_name}} au prix de {{final_price}}€ (valorisation {{valuation_rate}}€ + marge {{margin_eur}}€). Offre spéciale ! Contactez-nous pour plus d'infos.",
+      "description": "Variables: {{customer_name}}, {{item_name}}, {{item_code}}, {{final_price}}, {{valuation_rate}}, {{margin_eur}}, {{currency}}"
     },
     {
       "fieldname": "section_break_actions",

@@ -43,9 +43,16 @@ class SMSPricingCampaign(Document):
 			else:
 				frappe.throw(_("Numéro mobile requis pour le client {0}").format(item.customer))
 		
-		# Validation du prix de base
-		if not item.base_rate or item.base_rate <= 0:
-			frappe.throw(_("Prix de base requis pour {0}").format(item.item_name or item.item_code))
+		# Validation du taux de valorisation
+		if not item.valuation_rate or item.valuation_rate <= 0:
+			frappe.throw(_("Taux de valorisation requis pour {0}").format(item.item_name or item.item_code))
+		
+		# Validation de la marge
+		if item.margin_amount_eur and item.margin_amount_eur < 0:
+			frappe.throw(_("La marge ne peut pas être négative pour {0}").format(item.item_name or item.item_code))
+		
+		# Force EUR comme devise
+		item.currency = "EUR"
 		
 		# Calcul automatique des prix
 		self.calculate_item_pricing(item)
@@ -98,21 +105,17 @@ class SMSPricingCampaign(Document):
 		return cleaned
 
 	def calculate_item_pricing(self, item):
-		"""Calcule le prix avec marge pour un article"""
+		"""Calcule le prix avec marge pour un article - NOUVELLE LOGIQUE"""
 		try:
-			# Prix de base
-			base_amount = (item.base_rate or 0) * (item.qty or 1)
+			# Nouvelle logique: Prix final = Taux de valorisation + Marge en euros
+			item.final_price = (item.valuation_rate or 0) + (item.margin_amount_eur or 0)
 			
-			# Calcul de la marge
-			margin_value = base_amount * (item.margin_percent or 0) / 100
-			
-			# Prix final
-			item.final_price = (item.base_rate or 0) + (margin_value / (item.qty or 1))
+			# Montant total = Prix final × Quantité
 			item.amount = item.final_price * (item.qty or 1)
 			
 		except Exception as e:
 			frappe.log_error(f"Erreur calcul prix article: {e}")
-			item.final_price = item.base_rate or 0
+			item.final_price = item.valuation_rate or 0
 			item.amount = item.final_price * (item.qty or 1)
 
 	def calculate_totals(self):
@@ -125,6 +128,7 @@ class SMSPricingCampaign(Document):
 			unique_customers = set()
 			total_amount = 0
 			total_margin = 0
+			total_valuation = 0
 			sms_cost = 0.10  # Coût estimé par SMS
 			
 			for item in self.pricing_items:
@@ -132,10 +136,13 @@ class SMSPricingCampaign(Document):
 					unique_customers.add(item.customer)
 				total_amount += item.amount or 0
 				
-				# Calcul de la marge
-				base_amount = (item.base_rate or 0) * (item.qty or 1)
-				margin_amount = (item.amount or 0) - base_amount
+				# Calcul de la marge totale (marge euros × quantité)
+				margin_amount = (item.margin_amount_eur or 0) * (item.qty or 1)
 				total_margin += margin_amount
+				
+				# Calcul du coût total de valorisation
+				valuation_amount = (item.valuation_rate or 0) * (item.qty or 1)
+				total_valuation += valuation_amount
 			
 			self.total_items = total_items
 			self.total_customers = len(unique_customers)
@@ -143,13 +150,9 @@ class SMSPricingCampaign(Document):
 			self.estimated_revenue = total_amount
 			self.profit_potential = total_margin
 			
-			# Calcul marge moyenne
-			if total_amount > 0:
-				revenue_without_margin = total_amount - total_margin
-				if revenue_without_margin > 0:
-					self.average_margin_percent = (total_margin / revenue_without_margin) * 100
-				else:
-					self.average_margin_percent = 0
+			# Calcul pourcentage de marge moyen
+			if total_valuation > 0:
+				self.average_margin_percent = (total_margin / total_valuation) * 100
 			else:
 				self.average_margin_percent = 0
 			
@@ -198,7 +201,9 @@ class SMSPricingCampaign(Document):
 				'item_code': item.item_code,
 				'final_price': "{:.2f}".format(item.final_price or 0),
 				'amount': "{:.2f}".format(item.amount or 0),
-				'currency': item.currency or self.currency or 'EUR',
+				'currency': "EUR",  # Force EUR
+				'valuation_rate': "{:.2f}".format(item.valuation_rate or 0),
+				'margin_eur': "{:.2f}".format(item.margin_amount_eur or 0),
 				'qty': item.qty or 1,
 				'company': self.company or frappe.defaults.get_user_default("Company") or "",
 				'campaign_title': self.title or ""
@@ -321,6 +326,8 @@ class SMSPricingCampaign(Document):
 					"mobile": item.customer_mobile,
 					"item": item.item_name or item.item_code,
 					"price": item.final_price,
+					"valuation": item.valuation_rate,
+					"margin": item.margin_amount_eur,
 					"message": message
 				})
 			
@@ -329,6 +336,46 @@ class SMSPricingCampaign(Document):
 		except Exception as e:
 			frappe.log_error(f"Erreur génération aperçu: {e}")
 			return []
+
+	def get_item_valuation_rate_internal(self, item_code):
+		"""Récupère le taux de valorisation d'un article - méthode interne"""
+		try:
+			# Méthode 1: Dernière valorisation en stock
+			valuation = frappe.db.sql("""
+				SELECT valuation_rate
+				FROM `tabStock Ledger Entry`
+				WHERE item_code = %s
+				AND valuation_rate > 0
+				ORDER BY posting_date DESC, posting_time DESC
+				LIMIT 1
+			""", item_code)
+			
+			if valuation:
+				return valuation[0][0]
+			
+			# Méthode 2: Prix standard de l'article
+			item_doc = frappe.get_doc("Item", item_code)
+			if hasattr(item_doc, 'standard_rate') and item_doc.standard_rate:
+				return item_doc.standard_rate
+			
+			# Méthode 3: Dernier prix d'achat
+			purchase_price = frappe.db.sql("""
+				SELECT rate
+				FROM `tabPurchase Invoice Item`
+				WHERE item_code = %s
+				AND rate > 0
+				ORDER BY creation DESC
+				LIMIT 1
+			""", item_code)
+			
+			if purchase_price:
+				return purchase_price[0][0]
+			
+			return 0
+			
+		except Exception as e:
+			frappe.log_error(f"Erreur récupération taux valorisation interne {item_code}: {e}")
+			return 0
 
 
 # === MÉTHODES GLOBALES POUR L'API ===
@@ -448,7 +495,10 @@ def send_test_sms(campaign_name, test_mobile):
 			return {
 				"success": True,
 				"message": f"SMS de test envoyé vers {test_mobile}",
-				"content": message
+				"content": message,
+				"valuation_rate": test_item.valuation_rate,
+				"margin_eur": test_item.margin_amount_eur,
+				"final_price": test_item.final_price
 			}
 		else:
 			return {
@@ -480,7 +530,8 @@ def get_item_valuation_rate(item_code):
 		if valuation:
 			return {
 				"success": True,
-				"rate": valuation[0][0]
+				"rate": valuation[0][0],
+				"source": "Stock Ledger Entry"
 			}
 		
 		# Méthode 2: Prix standard de l'article
@@ -488,7 +539,8 @@ def get_item_valuation_rate(item_code):
 		if hasattr(item_doc, 'standard_rate') and item_doc.standard_rate:
 			return {
 				"success": True,
-				"rate": item_doc.standard_rate
+				"rate": item_doc.standard_rate,
+				"source": "Standard Rate"
 			}
 		
 		# Méthode 3: Dernier prix d'achat
@@ -504,12 +556,14 @@ def get_item_valuation_rate(item_code):
 		if purchase_price:
 			return {
 				"success": True,
-				"rate": purchase_price[0][0]
+				"rate": purchase_price[0][0],
+				"source": "Purchase Invoice"
 			}
 		
 		return {
 			"success": True,
-			"rate": 0
+			"rate": 0,
+			"source": "No data found"
 		}
 		
 	except Exception as e:
@@ -573,6 +627,11 @@ def validate_campaign(doc, method):
 	"""Validation lors de la soumission d'une campagne"""
 	if not doc.pricing_items:
 		frappe.throw(_("Aucun article configuré"))
+	
+	# Vérifier que tous les articles ont un taux de valorisation
+	for item in doc.pricing_items:
+		if not item.valuation_rate or item.valuation_rate <= 0:
+			frappe.throw(_("Taux de valorisation manquant pour {0}").format(item.item_name or item.item_code))
 	
 	# Vérifier l'intégration OVH SMS
 	sms_settings = frappe.get_single('OVH SMS Settings')
