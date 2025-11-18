@@ -46,8 +46,14 @@ def get_employee_mobile(employee_id: str) -> dict[str, Any]:
         if not employee:
             return {"status": "error", "message": f"Employé {employee_id} introuvable"}
 
-        # Vérifier le numéro de téléphone
-        mobile = employee.cell_number
+        # Essayer différents champs possibles (selon la version d'ERPNext)
+        mobile = (
+            getattr(employee, "cell_number", None) or
+            getattr(employee, "mobile_no", None) or
+            getattr(employee, "personal_mobile", None) or
+            getattr(employee, "mobile", None) or
+            getattr(employee, "phone", None)
+        )
 
         if not mobile:
             return {
@@ -348,18 +354,30 @@ def get_employees_with_mobile() -> dict[str, Any]:
         Filtre uniquement les employés qui ont un numéro de téléphone configuré.
     """
     try:
-        # Récupérer tous les employés actifs
+        # Récupérer tous les employés actifs avec TOUS les champs possibles pour mobile
+        # Différentes versions d'ERPNext utilisent différents noms de champs
         employees = frappe.get_all(
             "Employee",
             filters={"status": "Active"},
-            fields=["name", "employee_name", "cell_number", "designation"],
+            fields=["name", "employee_name", "designation"],
             order_by="employee_name",
         )
 
         # Filtrer ceux qui ont un mobile et enrichir les données
         employees_with_mobile = []
-        for emp in employees:
-            mobile = emp.cell_number
+        for emp_data in employees:
+            # Récupérer le document complet pour accéder à tous les champs
+            emp = frappe.get_doc("Employee", emp_data.name)
+
+            # Essayer différents champs possibles (selon la version d'ERPNext)
+            mobile = (
+                getattr(emp, "cell_number", None) or
+                getattr(emp, "mobile_no", None) or
+                getattr(emp, "personal_mobile", None) or
+                getattr(emp, "mobile", None) or
+                getattr(emp, "phone", None)
+            )
+
             if mobile:
                 employees_with_mobile.append(
                     {
