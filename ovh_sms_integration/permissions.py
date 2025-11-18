@@ -191,21 +191,25 @@ def check_user_sms_quota(user: str) -> int:
 		
 		# TODO: Créer doctype SMS Campaign Log pour le suivi
 		# Compter les SMS envoyés aujourd'hui
+		# NOTE: SMS Campaign Log n'existe pas encore, donc on considère 0 SMS envoyés
+		# jusqu'à ce que le doctype soit créé
 		sent_today = 0
-		try:
-			today = datetime.now().date()
-			sent_today = frappe.db.count("SMS Campaign Log", {
-				"sender": user,
-				"date": today,
-				"status": "Sent"
-			})
-		except Exception as log_error:
-			# Si la table SMS Campaign Log n'existe pas encore, on considère 0 SMS envoyés
-			frappe.log_error(
-				f"SMS Campaign Log non disponible: {log_error}",
-				"SMS Quota Warning"
-			)
-			sent_today = 0
+
+		# Vérifier si le doctype existe avant de faire la requête
+		if frappe.db.exists("DocType", "SMS Campaign Log"):
+			try:
+				today = datetime.now().date()
+				sent_today = frappe.db.count("SMS Campaign Log", {
+					"sender": user,
+					"date": today,
+					"status": "Sent"
+				})
+			except Exception as log_error:
+				frappe.log_error(
+					f"Erreur comptage SMS Campaign Log: {log_error}",
+					"SMS Quota Warning"
+				)
+				sent_today = 0
 
 		if sent_today >= max_quota:
 			frappe.throw(_("Quota SMS journalier atteint ({0}/{1})").format(sent_today, max_quota))

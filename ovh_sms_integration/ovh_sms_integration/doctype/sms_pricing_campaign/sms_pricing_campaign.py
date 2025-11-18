@@ -1,15 +1,60 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals
-import frappe
-from frappe.model.document import Document
-from frappe import _
-from datetime import datetime
+"""SMS Pricing Campaign doctype.
+
+Ce module gère les campagnes de tarification SMS pour les clients.
+Il fournit les fonctionnalités de:
+- Création de campagnes de prix personnalisés par client/article
+- Calcul automatique des marges et prix de vente
+- Envoi de SMS de tarification en masse
+- Suivi des envois et statistiques
+- Templates personnalisables pour les messages
+"""
+
+from __future__ import annotations
+
 import json
+import re
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
+
+import frappe
+from frappe import _
+from frappe.model.document import Document
 from jinja2 import Template
 
+if TYPE_CHECKING:
+	from ovh_sms_integration.types import CampaignStats, SMSResult
+
 class SMSPricingCampaign(Document):
-	def validate(self):
-		"""Validation des données de la campagne"""
+	"""DocType de campagne de tarification SMS.
+
+	Gère les campagnes de prix personnalisés envoyées par SMS aux clients.
+
+	Attributes:
+		campaign_name (str): Nom de la campagne
+		pricing_items (list): Lignes de tarification (client + article + prix)
+		message_template (str): Template Jinja2 du message
+		status (str): Statut ("Brouillon", "Prêt", "Envoyé", etc.)
+		total_items (int): Nombre total d'articles
+		total_customers (int): Nombre de clients uniques
+		total_sms_cost (float): Coût total estimé des SMS
+		estimated_revenue (float): Revenu total estimé
+		profit_potential (float): Profit total estimé
+		average_margin_percent (float): Marge moyenne en %
+	"""
+
+	def validate(self) -> None:
+		"""Valide les données de la campagne avant sauvegarde.
+
+		Raises:
+			frappe.ValidationError: Si aucun article n'est ajouté.
+			frappe.ValidationError: Si validation des lignes échoue.
+
+		Note:
+			- Valide toutes les pricing_items
+			- Calcule les totaux automatiquement
+			- Met à jour le statut selon les données
+		"""
 		if not self.pricing_items:
 			frappe.throw(_("Veuillez ajouter au moins un article et client"))
 		
@@ -23,12 +68,36 @@ class SMSPricingCampaign(Document):
 		# Mise à jour du statut
 		self.update_status()
 
-	def before_save(self):
-		"""Actions avant sauvegarde"""
+	def before_save(self) -> None:
+		"""Actions avant sauvegarde.
+
+		Note:
+			- Recalcule les totaux pour assurer cohérence
+			- Appelé automatiquement par Frappe avant save()
+		"""
 		self.calculate_totals()
 
-	def validate_pricing_item(self, item):
-		"""Valide une ligne de tarification"""
+	def validate_pricing_item(self, item: Any) -> None:
+		"""Valide une ligne de tarification.
+
+		Vérifie tous les champs requis et calcule automatiquement
+		les prix et marges pour une ligne de campagne.
+
+		Args:
+			item: Ligne de tarification (child table row).
+
+		Raises:
+			frappe.ValidationError: Si client manquant.
+			frappe.ValidationError: Si article manquant.
+			frappe.ValidationError: Si mobile manquant et non récupérable.
+			frappe.ValidationError: Si valuation_rate invalide.
+			frappe.ValidationError: Si marge négative.
+
+		Note:
+			- Récupère automatiquement le mobile du client si absent
+			- Force la devise à EUR
+			- Calcule automatiquement les prix via calculate_item_pricing()
+		"""
 		if not item.customer:
 			frappe.throw(_("Client requis dans ligne {0}").format(item.idx))
 		
@@ -57,38 +126,97 @@ class SMSPricingCampaign(Document):
 		# Calcul automatique des prix
 		self.calculate_item_pricing(item)
 
-	def get_customer_mobile(self, customer_name):
-		"""Récupère le numéro mobile d'un client"""
+	def get_customer_mobile(self, customer_name: str) -> str | None:
+		"""Récupère le numéro mobile d'un client.
+
+		Recherche le mobile dans le document Customer puis dans les contacts liés.
+
+		Args:
+			customer_name: Nom/ID du client.
+
+		Returns:
+			str | None: Numéro mobile formaté, ou None si non trouvé.
+
+		Note:
+			- TODO: Convertir SQL en ORM Frappe
+			- Vérifie customer.mobile_no en premier
+			- Fallback sur Contact via Dynamic Link
+			- Formate automatiquement le numéro via format_phone_number()
+			- Les erreurs sont loggées et retournent None
+		"""
 		try:
 			customer = frappe.get_doc("Customer", customer_name)
-			
+
 			# Vérifier le champ mobile du customer
 			if hasattr(customer, 'mobile_no') and customer.mobile_no:
 				return self.format_phone_number(customer.mobile_no)
-			
-			# Chercher dans les contacts liés
-			contacts = frappe.db.sql("""
-				SELECT mobile_no, phone
-				FROM `tabContact`
-				WHERE name IN (
-					SELECT parent FROM `tabDynamic Link`
-					WHERE link_doctype = 'Customer' AND link_name = %s
+
+			# Chercher dans les contacts liés (ORM Frappe)
+			# Récupérer les Dynamic Links pour ce client
+			dynamic_links = frappe.get_all(
+				"Dynamic Link",
+				filters={
+					"link_doctype": "Customer",
+					"link_name": customer_name
+				},
+				fields=["parent"]
+			)
+
+			if dynamic_links:
+				contact_names = [link.parent for link in dynamic_links]
+				contacts = frappe.get_all(
+					"Contact",
+					filters=[
+						["name", "in", contact_names],
+						["mobile_no", "is", "set"]
+					],
+					fields=["mobile_no", "phone"],
+					limit=1
 				)
-				AND (mobile_no IS NOT NULL OR phone IS NOT NULL)
-				LIMIT 1
-			""", customer_name, as_dict=True)
-			
-			if contacts:
-				mobile = contacts[0].mobile_no or contacts[0].phone
-				return self.format_phone_number(mobile)
+
+				# Fallback si pas de mobile_no mais un phone
+				if not contacts:
+					contacts = frappe.get_all(
+						"Contact",
+						filters=[
+							["name", "in", contact_names],
+							["phone", "is", "set"]
+						],
+						fields=["mobile_no", "phone"],
+						limit=1
+					)
+
+				if contacts:
+					mobile = contacts[0].mobile_no or contacts[0].phone
+					return self.format_phone_number(mobile)
 				
 		except Exception as e:
 			frappe.log_error(f"Erreur récupération mobile client {customer_name}: {e}")
 		
 		return None
 
-	def format_phone_number(self, phone):
-		"""Formate un numéro de téléphone français"""
+	def format_phone_number(self, phone: str | None) -> str | None:
+		"""Formate un numéro de téléphone au format international français.
+
+		Nettoie et convertit les numéros au format +33.
+
+		Args:
+			phone: Numéro de téléphone brut.
+
+		Returns:
+			str | None: Numéro formaté (+33...) ou numéro original si non français.
+
+		Example:
+			>>> campaign.format_phone_number("06 12 34 56 78")
+			'+33612345678'
+			>>> campaign.format_phone_number("+33612345678")
+			'+33612345678'
+
+		Note:
+			- Supprime les espaces, points, tirets
+			- Convertit 06... en +336...
+			- Laisse inchangé si déjà au format international
+		"""
 		if not phone:
 			return phone
 		
@@ -104,8 +232,21 @@ class SMSPricingCampaign(Document):
 		
 		return cleaned
 
-	def calculate_item_pricing(self, item):
-		"""Calcule le prix avec marge pour un article - NOUVELLE LOGIQUE"""
+	def calculate_item_pricing(self, item: Any) -> None:
+		"""Calcule le prix avec marge pour un article.
+
+		Formule: Prix final = Taux de valorisation + Marge en euros
+		Montant total = Prix final × Quantité
+
+		Args:
+			item: Ligne de tarification (child table row).
+
+		Note:
+			- Utilise valuation_rate comme prix de base
+			- Ajoute margin_amount_eur (marge en euros fixes)
+			- Calcule amount = final_price × qty
+			- Les erreurs sont loggées et un prix fallback est utilisé
+		"""
 		try:
 			# Nouvelle logique: Prix final = Taux de valorisation + Marge en euros
 			item.final_price = (item.valuation_rate or 0) + (item.margin_amount_eur or 0)
@@ -118,8 +259,23 @@ class SMSPricingCampaign(Document):
 			item.final_price = item.valuation_rate or 0
 			item.amount = item.final_price * (item.qty or 1)
 
-	def calculate_totals(self):
-		"""Calcule les totaux de la campagne"""
+	def calculate_totals(self) -> None:
+		"""Calcule les totaux et statistiques de la campagne.
+
+		Met à jour tous les champs de totalisation du document:
+		- total_items: Nombre de lignes
+		- total_customers: Nombre de clients uniques
+		- total_sms_cost: Coût estimé des SMS (0.10€ par SMS)
+		- estimated_revenue: Revenu total estimé
+		- profit_potential: Marge totale estimée
+		- average_margin_percent: Pourcentage de marge moyen
+
+		Note:
+			- Calcule marge = margin_amount_eur × qty pour chaque ligne
+			- Coût SMS = 0.10€ × nombre de clients uniques
+			- Marge % = (marge totale / valorisation totale) × 100
+			- Les erreurs sont loggées mais ne bloquent pas
+		"""
 		try:
 			if not self.pricing_items:
 				return
@@ -159,8 +315,20 @@ class SMSPricingCampaign(Document):
 		except Exception as e:
 			frappe.log_error(f"Erreur calcul totaux campagne: {e}")
 
-	def update_status(self):
-		"""Met à jour le statut de la campagne"""
+	def update_status(self) -> None:
+		"""Met à jour le statut de la campagne selon les envois.
+
+		Statuts possibles:
+		- "Brouillon": Pas prête ou aucun SMS envoyé
+		- "Prêt": Validée et prête à envoyer
+		- "Partiellement envoyé": Certains SMS envoyés
+		- "Envoyé": Tous les SMS envoyés
+
+		Note:
+			- Compte le nombre de sms_sent dans pricing_items
+			- Vérifie validate_ready_to_send() pour statut "Prêt"
+			- Appelé automatiquement dans validate()
+		"""
 		if not self.pricing_items:
 			self.status = "Brouillon"
 			return
@@ -178,8 +346,17 @@ class SMSPricingCampaign(Document):
 		else:
 			self.status = "Partiellement envoyé"
 
-	def validate_ready_to_send(self):
-		"""Vérifie si la campagne est prête à être envoyée"""
+	def validate_ready_to_send(self) -> bool:
+		"""Vérifie si la campagne est prête à être envoyée.
+
+		Returns:
+			bool: True si toutes les lignes ont customer_mobile et final_price.
+
+		Note:
+			- Vérifie que toutes les lignes ont un mobile
+			- Vérifie que toutes les lignes ont un final_price
+			- Retourne False si pricing_items vide
+		"""
 		if not self.pricing_items:
 			return False
 		
@@ -189,8 +366,30 @@ class SMSPricingCampaign(Document):
 		
 		return True
 
-	def format_sms_message(self, item):
-		"""Formate le message SMS pour un client/article"""
+	def format_sms_message(self, item: Any) -> str:
+		"""Formate le message SMS pour un client/article.
+
+		Rend le template Jinja2 avec les données de la ligne.
+
+		Args:
+			item: Ligne de tarification (child table row).
+
+		Returns:
+			str: Message SMS formaté. En cas d'erreur, retourne un message fallback.
+
+		Example:
+			>>> template = "Bonjour {{customer_name}}, {{item_name}} à {{final_price}}€"
+			>>> message = campaign.format_sms_message(item)
+			>>> # "Bonjour ACME Corp, Fuel Oil à 150.50€"
+
+		Note:
+			- Variables disponibles: customer_name, item_name, item_code,
+			  final_price, amount, currency, valuation_rate, margin_eur,
+			  qty, company, campaign_title
+			- Formate les prix avec 2 décimales
+			- Force currency à EUR
+			- Les erreurs retournent un message simple fallback
+		"""
 		try:
 			template = self.sms_template or "Bonjour {{customer_name}}, nous vous proposons {{item_name}} au prix de {{final_price}}€."
 			
@@ -219,8 +418,27 @@ class SMSPricingCampaign(Document):
 			frappe.log_error(f"Erreur formatage message SMS: {e}")
 			return f"Offre {item.item_name} à {item.final_price}€ pour {item.customer_name}"
 
-	def send_sms_to_item(self, item):
-		"""Envoie un SMS pour une ligne spécifique"""
+	def send_sms_to_item(self, item: Any) -> dict[str, Any]:
+		"""Envoie un SMS pour une ligne spécifique.
+
+		Formate et envoie le SMS pour une ligne de campagne, puis
+		met à jour le statut d'envoi.
+
+		Args:
+			item: Ligne de tarification (child table row).
+
+		Returns:
+			dict[str, Any]: Résultat avec success et message.
+
+		Note:
+			- Vérifie que SMS pas déjà envoyé (item.sms_sent)
+			- Vérifie que customer_mobile existe
+			- Formate le message via format_sms_message()
+			- Délègue l'envoi à OVH SMS Settings
+			- Met à jour item.sms_sent et item.sms_status si succès
+			- Met à jour item.sms_error_message si échec
+			- Sauvegarde le document automatiquement après mise à jour
+		"""
 		try:
 			if item.sms_sent:
 				return {"success": False, "message": "SMS déjà envoyé"}
@@ -257,8 +475,25 @@ class SMSPricingCampaign(Document):
 			
 			return {"success": False, "message": error_msg}
 
-	def send_all_sms(self):
-		"""Envoie tous les SMS de la campagne"""
+	def send_all_sms(self) -> dict[str, Any]:
+		"""Envoie tous les SMS de la campagne.
+
+		Traite toutes les lignes sélectionnées et non encore envoyées.
+
+		Returns:
+			dict[str, Any]: Statistiques d'envoi avec:
+				- sent (int): Nombre de SMS envoyés
+				- failed (int): Nombre de SMS échoués
+				- details (list): Liste des résultats par ligne
+				- error (str): Message d'erreur si exception globale
+
+		Note:
+			- Traite uniquement les lignes avec selected_for_sending=True
+			- Ignore les lignes déjà envoyées (sms_sent=True)
+			- Met à jour les statistiques via update_sending_statistics()
+			- Sauvegarde automatiquement le document après traitement
+			- Les erreurs individuelles n'arrêtent pas le batch
+		"""
 		results = {
 			"sent": 0,
 			"failed": 0,
@@ -298,8 +533,18 @@ class SMSPricingCampaign(Document):
 				"error": str(e)
 			}
 
-	def update_sending_statistics(self, results):
-		"""Met à jour les statistiques d'envoi"""
+	def update_sending_statistics(self, results: dict[str, Any]) -> None:
+		"""Met à jour les statistiques d'envoi.
+
+		Args:
+			results: Dict avec sent et failed counts.
+
+		Note:
+			- Met à jour sms_sent_count et sms_failed_count
+			- Met à jour last_sent_time à maintenant
+			- Appelle update_status() pour recalculer le statut
+			- Les erreurs sont loggées mais ne bloquent pas
+		"""
 		try:
 			self.sms_sent_count = (self.sms_sent_count or 0) + results["sent"]
 			self.sms_failed_count = (self.sms_failed_count or 0) + results["failed"]
@@ -311,8 +556,21 @@ class SMSPricingCampaign(Document):
 		except Exception as e:
 			frappe.log_error(f"Erreur mise à jour statistiques: {e}")
 
-	def get_preview_messages(self):
-		"""Génère un aperçu des messages pour quelques clients"""
+	def get_preview_messages(self) -> list[dict[str, Any]]:
+		"""Génère un aperçu des messages pour quelques clients.
+
+		Retourne les 3 premières lignes sélectionnées avec messages formatés.
+
+		Returns:
+			list[dict[str, Any]]: Liste de previews avec customer, mobile,
+				item, price, valuation, margin, message pour chaque ligne.
+
+		Note:
+			- Limite à 3 lignes maximum
+			- Utilise uniquement les lignes avec selected_for_sending=True
+			- Appelle format_sms_message() pour chaque ligne
+			- Les erreurs retournent une liste vide et sont loggées
+		"""
 		previews = []
 		
 		try:
@@ -337,39 +595,59 @@ class SMSPricingCampaign(Document):
 			frappe.log_error(f"Erreur génération aperçu: {e}")
 			return []
 
-	def get_item_valuation_rate_internal(self, item_code):
-		"""Récupère le taux de valorisation d'un article - méthode interne"""
+	def get_item_valuation_rate_internal(self, item_code: str) -> float:
+		"""Récupère le taux de valorisation d'un article.
+
+		Recherche le taux de valorisation avec plusieurs méthodes fallback.
+
+		Args:
+			item_code: Code de l'article.
+
+		Returns:
+			float: Taux de valorisation. Retourne 0 si non trouvé.
+
+		Note:
+			- Méthode 1: Dernière valorisation dans Stock Ledger Entry
+			- Méthode 2: standard_rate du document Item
+			- Méthode 3: Dernier prix dans Purchase Invoice Item
+			- Retourne 0 si aucune méthode ne trouve de valeur
+			- Les erreurs sont loggées et retournent 0
+		"""
 		try:
-			# Méthode 1: Dernière valorisation en stock
-			valuation = frappe.db.sql("""
-				SELECT valuation_rate
-				FROM `tabStock Ledger Entry`
-				WHERE item_code = %s
-				AND valuation_rate > 0
-				ORDER BY posting_date DESC, posting_time DESC
-				LIMIT 1
-			""", item_code)
-			
+			# Méthode 1: Dernière valorisation en stock (ORM Frappe)
+			valuation = frappe.get_all(
+				"Stock Ledger Entry",
+				filters={
+					"item_code": item_code,
+					"valuation_rate": [">", 0]
+				},
+				fields=["valuation_rate"],
+				order_by="posting_date desc, posting_time desc",
+				limit=1
+			)
+
 			if valuation:
-				return valuation[0][0]
-			
+				return valuation[0].valuation_rate
+
 			# Méthode 2: Prix standard de l'article
 			item_doc = frappe.get_doc("Item", item_code)
 			if hasattr(item_doc, 'standard_rate') and item_doc.standard_rate:
 				return item_doc.standard_rate
-			
-			# Méthode 3: Dernier prix d'achat
-			purchase_price = frappe.db.sql("""
-				SELECT rate
-				FROM `tabPurchase Invoice Item`
-				WHERE item_code = %s
-				AND rate > 0
-				ORDER BY creation DESC
-				LIMIT 1
-			""", item_code)
-			
+
+			# Méthode 3: Dernier prix d'achat (ORM Frappe)
+			purchase_price = frappe.get_all(
+				"Purchase Invoice Item",
+				filters={
+					"item_code": item_code,
+					"rate": [">", 0]
+				},
+				fields=["rate"],
+				order_by="creation desc",
+				limit=1
+			)
+
 			if purchase_price:
-				return purchase_price[0][0]
+				return purchase_price[0].rate
 			
 			return 0
 			
@@ -381,8 +659,35 @@ class SMSPricingCampaign(Document):
 # === MÉTHODES GLOBALES POUR L'API ===
 
 @frappe.whitelist()
-def send_all_sms(campaign_name):
-	"""API pour envoyer tous les SMS d'une campagne"""
+def send_all_sms(campaign_name: str) -> dict[str, Any]:
+	"""API endpoint pour envoyer tous les SMS d'une campagne.
+
+	Fonction whitelistée pour déclencher l'envoi en masse depuis l'interface.
+
+	Args:
+		campaign_name: Nom/ID de la campagne.
+
+	Returns:
+		dict[str, Any]: Résultats avec success, message, sent, failed, details.
+
+	Raises:
+		frappe.ValidationError: Si campagne non soumise (docstatus != 1).
+
+	Example:
+		>>> # Depuis JavaScript
+		>>> frappe.call({
+		...     method: "ovh_sms_integration...send_all_sms",
+		...     args: {campaign_name: "CAMP-001"},
+		...     callback: function(r) {
+		...         console.log("Envoyés:", r.message.sent);
+		...     }
+		... })
+
+	Note:
+		- Nécessite que la campagne soit soumise (docstatus=1)
+		- Délègue à campaign.send_all_sms()
+		- Les erreurs sont loggées et retournées dans le résultat
+	"""
 	try:
 		campaign = frappe.get_doc("SMS Pricing Campaign", campaign_name)
 		
@@ -408,8 +713,23 @@ def send_all_sms(campaign_name):
 		}
 
 @frappe.whitelist()
-def send_selected_sms(campaign_name):
-	"""API pour envoyer les SMS sélectionnés"""
+def send_selected_sms(campaign_name: str) -> dict[str, Any]:
+	"""API endpoint pour envoyer uniquement les SMS sélectionnés.
+
+	Fonction whitelistée pour envoyer seulement les lignes avec
+	selected_for_sending=True.
+
+	Args:
+		campaign_name: Nom/ID de la campagne.
+
+	Returns:
+		dict[str, Any]: Résultat avec success, message et results.
+
+	Note:
+		- Compte les lignes selected_for_sending=True et sms_sent=False
+		- Retourne erreur si aucune ligne sélectionnée
+		- Délègue à campaign.send_all_sms() (qui filtre automatiquement)
+	"""
 	try:
 		campaign = frappe.get_doc("SMS Pricing Campaign", campaign_name)
 		
@@ -439,8 +759,20 @@ def send_selected_sms(campaign_name):
 		}
 
 @frappe.whitelist()
-def preview_messages(campaign_name):
-	"""API pour prévisualiser les messages SMS"""
+def preview_messages(campaign_name: str) -> dict[str, Any]:
+	"""API endpoint pour prévisualiser les messages SMS.
+
+	Args:
+		campaign_name: Nom/ID de la campagne.
+
+	Returns:
+		dict[str, Any]: Résultat avec success et previews (liste).
+
+	Note:
+		- Délègue à campaign.get_preview_messages()
+		- Limite à 3 messages
+		- Les erreurs sont loggées
+	"""
 	try:
 		campaign = frappe.get_doc("SMS Pricing Campaign", campaign_name)
 		previews = campaign.get_preview_messages()
@@ -458,8 +790,23 @@ def preview_messages(campaign_name):
 		}
 
 @frappe.whitelist()
-def send_test_sms(campaign_name, test_mobile):
-	"""API pour envoyer un SMS de test"""
+def send_test_sms(campaign_name: str, test_mobile: str) -> dict[str, Any]:
+	"""API endpoint pour envoyer un SMS de test.
+
+	Args:
+		campaign_name: Nom/ID de la campagne.
+		test_mobile: Numéro de test pour recevoir le SMS.
+
+	Returns:
+		dict[str, Any]: Résultat avec success, message, content, valuation_rate,
+			margin_eur, final_price.
+
+	Note:
+		- Utilise le premier article de la campagne pour le test
+		- Crée une copie temporaire avec "Client Test"
+		- N'enregistre PAS l'envoi du test
+		- Retourne le contenu du message pour preview
+	"""
 	try:
 		campaign = frappe.get_doc("SMS Pricing Campaign", campaign_name)
 		
@@ -514,26 +861,42 @@ def send_test_sms(campaign_name, test_mobile):
 		}
 
 @frappe.whitelist()
-def get_item_valuation_rate(item_code):
-	"""API pour récupérer le taux de valorisation d'un article"""
+def get_item_valuation_rate(item_code: str) -> dict[str, Any]:
+	"""API endpoint pour récupérer le taux de valorisation d'un article.
+
+	Args:
+		item_code: Code de l'article.
+
+	Returns:
+		dict[str, Any]: Résultat avec success, rate et source.
+			Source peut être: "Stock Ledger Entry", "Standard Rate",
+			"Purchase Invoice", "No data found".
+
+	Note:
+		- Essaie 3 sources dans l'ordre
+		- Retourne 0 si aucune source ne trouve de valeur
+		- Les erreurs sont loggées
+	"""
 	try:
-		# Méthode 1: Dernière valorisation en stock
-		valuation = frappe.db.sql("""
-			SELECT valuation_rate
-			FROM `tabStock Ledger Entry`
-			WHERE item_code = %s
-			AND valuation_rate > 0
-			ORDER BY posting_date DESC, posting_time DESC
-			LIMIT 1
-		""", item_code)
-		
+		# Méthode 1: Dernière valorisation en stock (ORM Frappe)
+		valuation = frappe.get_all(
+			"Stock Ledger Entry",
+			filters={
+				"item_code": item_code,
+				"valuation_rate": [">", 0]
+			},
+			fields=["valuation_rate"],
+			order_by="posting_date desc, posting_time desc",
+			limit=1
+		)
+
 		if valuation:
 			return {
 				"success": True,
-				"rate": valuation[0][0],
+				"rate": valuation[0].valuation_rate,
 				"source": "Stock Ledger Entry"
 			}
-		
+
 		# Méthode 2: Prix standard de l'article
 		item_doc = frappe.get_doc("Item", item_code)
 		if hasattr(item_doc, 'standard_rate') and item_doc.standard_rate:
@@ -542,21 +905,23 @@ def get_item_valuation_rate(item_code):
 				"rate": item_doc.standard_rate,
 				"source": "Standard Rate"
 			}
-		
-		# Méthode 3: Dernier prix d'achat
-		purchase_price = frappe.db.sql("""
-			SELECT rate
-			FROM `tabPurchase Invoice Item`
-			WHERE item_code = %s
-			AND rate > 0
-			ORDER BY creation DESC
-			LIMIT 1
-		""", item_code)
-		
+
+		# Méthode 3: Dernier prix d'achat (ORM Frappe)
+		purchase_price = frappe.get_all(
+			"Purchase Invoice Item",
+			filters={
+				"item_code": item_code,
+				"rate": [">", 0]
+			},
+			fields=["rate"],
+			order_by="creation desc",
+			limit=1
+		)
+
 		if purchase_price:
 			return {
 				"success": True,
-				"rate": purchase_price[0][0],
+				"rate": purchase_price[0].rate,
 				"source": "Purchase Invoice"
 			}
 		
@@ -574,8 +939,19 @@ def get_item_valuation_rate(item_code):
 		}
 
 @frappe.whitelist()
-def get_customer_mobile(customer):
-	"""API pour récupérer le mobile d'un client"""
+def get_customer_mobile(customer: str) -> dict[str, Any]:
+	"""API endpoint pour récupérer le mobile d'un client.
+
+	Args:
+		customer: Nom/ID du client.
+
+	Returns:
+		dict[str, Any]: Résultat avec success et mobile.
+
+	Note:
+		- Crée une instance temporaire pour réutiliser la logique
+		- Délègue à SMSPricingCampaign.get_customer_mobile()
+	"""
 	try:
 		# Créer une instance temporaire pour utiliser la méthode
 		temp_campaign = SMSPricingCampaign()
@@ -593,8 +969,21 @@ def get_customer_mobile(customer):
 			"message": f"Erreur: {str(e)}"
 		}
 
-def calculate_campaign_roi(campaign_name):
-	"""Calcule le ROI d'une campagne SMS"""
+def calculate_campaign_roi(campaign_name: str) -> dict[str, float] | None:
+	"""Calcule le ROI d'une campagne SMS.
+
+	Args:
+		campaign_name: Nom/ID de la campagne.
+
+	Returns:
+		dict[str, float] | None: ROI avec roi_percent, revenue, cost, profit.
+			Retourne None en cas d'erreur.
+
+	Note:
+		- ROI % = ((revenue - cost) / cost) × 100
+		- Retourne 0 si cost=0
+		- Les erreurs sont loggées et retournent None
+	"""
 	try:
 		campaign = frappe.get_doc("SMS Pricing Campaign", campaign_name)
 		
@@ -623,8 +1012,20 @@ def calculate_campaign_roi(campaign_name):
 
 # Fonctions de validation pour l'installation
 
-def validate_campaign(doc, method):
-	"""Validation lors de la soumission d'une campagne"""
+def validate_campaign(doc: Any, method: str) -> None:
+	"""Validation lors de la soumission d'une campagne.
+
+	Hook appelé lors du submit du document.
+
+	Args:
+		doc: Document SMSPricingCampaign.
+		method: Nom de la méthode (e.g., "on_submit").
+
+	Raises:
+		frappe.ValidationError: Si pricing_items vide.
+		frappe.ValidationError: Si valuation_rate manquant.
+		frappe.ValidationError: Si OVH SMS non activé.
+	"""
 	if not doc.pricing_items:
 		frappe.throw(_("Aucun article configuré"))
 	
@@ -638,8 +1039,20 @@ def validate_campaign(doc, method):
 	if not sms_settings.enabled:
 		frappe.throw(_("OVH SMS Integration doit être activé"))
 
-def on_campaign_submit(doc, method):
-	"""Actions lors de la soumission d'une campagne"""
+def on_campaign_submit(doc: Any, method: str) -> None:
+	"""Actions lors de la soumission d'une campagne.
+
+	Hook appelé après submit réussi.
+
+	Args:
+		doc: Document SMSPricingCampaign.
+		method: Nom de la méthode (e.g., "on_submit").
+
+	Note:
+		- Met le statut à "Prêt"
+		- Commit la transaction
+		- Affiche un message de succès
+	"""
 	# Marquer comme prêt
 	doc.db_set('status', 'Prêt')
 	frappe.db.commit()
@@ -647,10 +1060,24 @@ def on_campaign_submit(doc, method):
 	frappe.msgprint(_("Campagne soumise avec succès. Vous pouvez maintenant envoyer les SMS."))
 
 # Hooks pour les événements de documents
-def validate_campaign_hook(doc, method):
-	"""Hook de validation"""
+def validate_campaign_hook(doc: Any, method: str) -> None:
+	"""Hook de validation.
+
+	Wrapper pour validate_campaign().
+
+	Args:
+		doc: Document SMSPricingCampaign.
+		method: Nom de la méthode.
+	"""
 	validate_campaign(doc, method)
 
-def on_campaign_submit_hook(doc, method):
-	"""Hook de soumission"""
+def on_campaign_submit_hook(doc: Any, method: str) -> None:
+	"""Hook de soumission.
+
+	Wrapper pour on_campaign_submit().
+
+	Args:
+		doc: Document SMSPricingCampaign.
+		method: Nom de la méthode.
+	"""
 	on_campaign_submit(doc, method)

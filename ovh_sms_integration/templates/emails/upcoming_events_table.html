@@ -1,0 +1,24 @@
+{% if events %}
+<table>
+    <thead>
+        <tr>
+            <th>Événement</th>
+            <th>Date/Heure</th>
+            <th>Description</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for event in events %}
+        <tr>
+            <td>{{ event.subject }}</td>
+            <td>{{ event.start_date }}</td>
+            <td>{{ event.description_preview }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="no-events">
+    <p>Aucun événement programmé pour la semaine prochaine.</p>
+</div>
+{% endif %}

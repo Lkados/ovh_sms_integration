@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rapport Hebdomadaire - Rappels d'Événements SMS</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h3 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h4 {
+            color: #34495e;
+            margin-top: 25px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        th {
+            background-color: #3498db;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+        }
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #ddd;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .stat-row td:first-child {
+            font-weight: bold;
+            background-color: #ecf0f1;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 15px;
+            border-top: 1px solid #ddd;
+            font-size: 0.9em;
+            color: #7f8c8d;
+        }
+        .no-events {
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #3498db;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <h3>Rapport Hebdomadaire - Rappels d'Événements SMS</h3>
+    <p>Période: <strong>{{ stats.week_start }}</strong> - <strong>{{ stats.week_end }}</strong></p>
+
+    <table>
+        <tr class="stat-row">
+            <td>Événements programmés cette semaine</td>
+            <td>{{ stats.events_scheduled }}</td>
+        </tr>
+        <tr class="stat-row">
+            <td>Rappels envoyés cette semaine</td>
+            <td>{{ stats.reminders_sent }}</td>
+        </tr>
+        <tr class="stat-row">
+            <td>Total rappels envoyés</td>
+            <td>{{ stats.total_reminders }}</td>
+        </tr>
+        <tr class="stat-row">
+            <td>Rappels échoués</td>
+            <td>{{ stats.failed_reminders }}</td>
+        </tr>
+    </table>
+
+    <h4>Prochains Événements</h4>
+    {{ upcoming_events_html|safe }}
+
+    <div class="footer">
+        <small>Rapport généré automatiquement le {{ generation_date }}</small>
+    </div>
+</body>
+</html>

@@ -54,3 +54,54 @@ typing-modules = ["frappe.types.DF"]
 quote-style = "double"
 indent-style = "tab"
 docstring-code-format = true
+
+# MyPy configuration for type checking
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false  # Start gradually
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+strict_optional = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = ["frappe.*", "erpnext.*", "requests.*", "jinja2.*", "ovh.*"]
+ignore_missing_imports = true
+
+# Pytest configuration
+[tool.pytest.ini_options]
+testpaths = ["ovh_sms_integration/tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["ovh_sms_integration"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/templates/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+precision = 2
+fail_under = 80.0
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
