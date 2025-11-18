@@ -263,7 +263,7 @@ def send_sms_to_employees(
                 # Envoyer le SMS
                 sms_result = send_sms(formatted_message, mobile)
 
-                if sms_result.get("status") == "success":
+                if sms_result and sms_result.get("success"):
                     # Succès
                     results.append(
                         {
@@ -271,7 +271,7 @@ def send_sms_to_employees(
                             "employee_name": employee_name,
                             "mobile": mobile,
                             "status": "success",
-                            "message_id": sms_result.get("message_id"),
+                            "message_id": sms_result.get("details", {}).get("ids", [None])[0] if sms_result.get("details") else None,
                             "message": "Envoyé",
                         }
                     )
@@ -290,7 +290,7 @@ def send_sms_to_employees(
                             "employee_name": employee_name,
                             "mobile": mobile,
                             "status": "error",
-                            "message": sms_result.get("message", "Échec d'envoi"),
+                            "message": sms_result.get("message", "Échec d'envoi") if sms_result else "Aucune réponse du service SMS",
                         }
                     )
                     failed_count += 1
