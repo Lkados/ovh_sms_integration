@@ -86,13 +86,25 @@ def check_sms_quota() -> dict[str, Any]:
         # Importer depuis l'app ovh_sms_integration
         from ovh_sms_integration.permissions import check_user_sms_quota
 
-        quota_info = check_user_sms_quota(frappe.session.user)
+        # check_user_sms_quota retourne un int (nombre de SMS restants)
+        remaining = check_user_sms_quota(frappe.session.user)
+
+        # Déterminer le quota total en fonction du rôle
+        user_roles = frappe.get_roles(frappe.session.user)
+        if "System Manager" in user_roles:
+            total = 9999
+        elif "SMS Manager" in user_roles:
+            total = 500
+        elif "SMS User" in user_roles:
+            total = 100
+        else:
+            total = 0
 
         return {
             "status": "success",
-            "has_permission": quota_info.get("has_permission", False),
-            "remaining": quota_info.get("remaining", 0),
-            "total": quota_info.get("total", 0),
+            "has_permission": total > 0,
+            "remaining": remaining,
+            "total": total,
         }
 
     except ImportError:
@@ -179,19 +191,20 @@ def send_sms_to_employees(
         if not employee_ids_list:
             return {"status": "error", "message": "Aucun employé sélectionné"}
 
-        # 2. Vérifier les permissions
+        # 2. Vérifier les permissions et le quota
         from ovh_sms_integration.permissions import check_user_sms_quota
 
-        quota_info = check_user_sms_quota(frappe.session.user)
-
-        if not quota_info.get("has_permission", False):
+        # check_user_sms_quota retourne un int (nombre de SMS restants) ou lève une exception
+        try:
+            remaining_quota = check_user_sms_quota(frappe.session.user)
+        except Exception as e:
             frappe.throw(
-                _("Vous n'avez pas la permission d'envoyer des SMS"), frappe.PermissionError
+                _("Vous n'avez pas la permission d'envoyer des SMS: {0}").format(str(e)),
+                frappe.PermissionError
             )
 
         # 3. Vérifier que le quota est suffisant pour tous les envois
         total_employees = len(employee_ids_list)
-        remaining_quota = quota_info.get("remaining", 0)
 
         if remaining_quota < total_employees:
             return {
