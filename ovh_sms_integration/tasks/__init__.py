@@ -2,20 +2,16 @@
 """Tâches planifiées pour ovh_sms_integration.
 
 Ce module contient les tâches schedulées (cron jobs) pour le système de rappels SMS.
-
-Note:
-    Ce fichier réexporte les fonctions depuis les sous-modules pour
-    maintenir la rétrocompatibilité avec les hooks existants.
-
-    Les implémentations sont dans:
-    - tasks/hourly.py: Tâches horaires
-    - tasks/daily.py: Tâches quotidiennes
-    - tasks/weekly.py: Tâches hebdomadaires
-    - tasks/health.py: Vérifications de santé
-    - tasks/maintenance.py: Maintenance et optimisation
+Il fournit les fonctionnalités de:
+- Vérification horaire des rappels d'événements
+- Réinitialisation quotidienne des compteurs
+- Nettoyage des anciens logs
+- Rapports hebdomadaires par email
+- Vérifications de santé du système
+- Optimisation de performance
+- Sauvegarde des configurations
 """
 
-# Réexportation pour rétrocompatibilité avec hooks.py
 from ovh_sms_integration.tasks.daily import (
     cleanup_old_reminder_logs,
     reset_daily_counters,

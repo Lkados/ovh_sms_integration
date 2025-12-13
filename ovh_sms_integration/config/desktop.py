@@ -1,5 +1,7 @@
 from __future__ import unicode_literals
+
 from frappe import _
+
 
 def get_data():
     return [
@@ -8,6 +10,6 @@ def get_data():
             "color": "blue",
             "icon": "octicon octicon-device-mobile",
             "type": "module",
-            "label": _("OVH SMS")
+            "label": _("OVH SMS"),
         }
     ]

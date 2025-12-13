@@ -38,37 +38,56 @@ def get_employee_mobile(employee_id: str) -> dict[str, Any]:
     """
     try:
         if not employee_id:
-            return {"status": "error", "message": "ID employé requis"}
+            return {"status": "error", "message": _("ID employé requis")}
 
         # Récupérer l'employé
         employee = frappe.get_doc("Employee", employee_id)
 
         if not employee:
-            return {"status": "error", "message": f"Employé {employee_id} introuvable"}
+            return {
+                "status": "error",
+                "message": _("Employé {0} introuvable").format(employee_id),
+            }
 
         # Essayer différents champs possibles (selon la version d'ERPNext)
         mobile = (
-            getattr(employee, "cell_number", None) or
-            getattr(employee, "mobile_no", None) or
-            getattr(employee, "personal_mobile", None) or
-            getattr(employee, "mobile", None) or
-            getattr(employee, "phone", None)
+            getattr(employee, "cell_number", None)
+            or getattr(employee, "mobile_no", None)
+            or getattr(employee, "personal_mobile", None)
+            or getattr(employee, "mobile", None)
+            or getattr(employee, "phone", None)
         )
 
         if not mobile:
             return {
                 "status": "error",
-                "message": f"Aucun numéro de téléphone pour {employee.employee_name}",
+                "message": _("Aucun numéro de téléphone pour {0}").format(
+                    employee.employee_name
+                ),
                 "employee_name": employee.employee_name,
             }
 
-        return {"status": "success", "mobile": mobile, "employee_name": employee.employee_name}
+        return {
+            "status": "success",
+            "mobile": mobile,
+            "employee_name": employee.employee_name,
+        }
 
     except frappe.DoesNotExistError:
-        return {"status": "error", "message": f"Employé {employee_id} introuvable"}
+        return {
+            "status": "error",
+            "message": _("Employé {0} introuvable").format(employee_id),
+        }
     except Exception as e:
-        frappe.log_error(f"Erreur get_employee_mobile: {str(e)}", "SMS Integration Error")
-        return {"status": "error", "message": f"Erreur lors de la récupération du mobile: {str(e)}"}
+        frappe.log_error(
+            f"Erreur get_employee_mobile: {str(e)}", "SMS Integration Error"
+        )
+        return {
+            "status": "error",
+            "message": _("Erreur lors de la récupération du mobile: {0}").format(
+                str(e)
+            ),
+        }
 
 
 @frappe.whitelist()
@@ -114,228 +133,281 @@ def check_sms_quota() -> dict[str, Any]:
         }
 
     except ImportError:
-        return {"status": "error", "message": "Module ovh_sms_integration non disponible"}
+        return {
+            "status": "error",
+            "message": "Module ovh_sms_integration non disponible",
+        }
     except Exception as e:
         frappe.log_error(f"Erreur check_sms_quota: {str(e)}", "SMS Integration Error")
-        return {"status": "error", "message": f"Erreur lors de la vérification du quota: {str(e)}"}
+        return {
+            "status": "error",
+            "message": _("Erreur lors de la vérification du quota: {0}").format(str(e)),
+        }
 
 
 @frappe.whitelist()
 def send_sms_to_employees(
     employee_ids: str | list[str], message: str, sender_name: str | None = None
 ) -> dict[str, Any]:
-    """
-    Envoie un SMS à un ou plusieurs employés.
+    """Envoie un SMS à un ou plusieurs employés.
 
     Args:
-        employee_ids: ID(s) de(s) employé(s) destinataire(s). Peut être:
-            - Une chaîne JSON: '["EMP-001", "EMP-002"]'
-            - Une liste Python: ["EMP-001", "EMP-002"]
-            - Un seul ID: "EMP-001"
+        employee_ids: ID(s) de(s) employé(s) destinataire(s).
         message: Contenu du SMS à envoyer.
-        sender_name: Nom de l'expéditeur (optionnel, utilise l'utilisateur actuel par défaut).
+        sender_name: Nom de l'expéditeur (optionnel).
 
     Returns:
-        dict: {
-            "status": "success" | "partial" | "error",
-            "total": int - Nombre total d'employés ciblés,
-            "sent": int - Nombre de SMS envoyés avec succès,
-            "failed": int - Nombre d'échecs,
-            "results": list[dict] - Détails pour chaque employé,
-            "message": str - Message récapitulatif
-        }
+        dict: Résultat avec status, total, sent, failed, results, message.
 
     Raises:
-        frappe.PermissionError: Si l'utilisateur n'a pas la permission d'envoyer des SMS.
-
-    Example:
-        >>> send_sms_to_employees(
-        ...     ["EMP-001", "EMP-002"],
-        ...     "Rappel: RDV client demain 9h",
-        ...     "Manager"
-        ... )
-        {
-            "status": "success",
-            "total": 2,
-            "sent": 2,
-            "failed": 0,
-            "results": [
-                {"employee_id": "EMP-001", "employee_name": "Jean Dupont", "status": "success"},
-                {"employee_id": "EMP-002", "employee_name": "Marie Martin", "status": "success"}
-            ],
-            "message": "2/2 SMS envoyés avec succès"
-        }
-
-    Note:
-        - Vérifie les permissions SMS avant envoi
-        - Vérifie que le quota est suffisant pour tous les SMS
-        - Log chaque envoi dans SMS Log
-        - Décrémente automatiquement le quota
-        - Continue l'envoi même si certains échouent
+        frappe.PermissionError: Si l'utilisateur n'a pas la permission.
     """
     try:
-        # 1. Parser les IDs d'employés
-        import json
-
-        if isinstance(employee_ids, str):
-            try:
-                # Essayer de parser comme JSON
-                parsed_ids = json.loads(employee_ids)
-                if isinstance(parsed_ids, list):
-                    employee_ids_list = parsed_ids
-                else:
-                    # Sinon c'est un seul ID
-                    employee_ids_list = [employee_ids]
-            except json.JSONDecodeError:
-                # Pas du JSON, c'est un seul ID
-                employee_ids_list = [employee_ids]
-        elif isinstance(employee_ids, list):
-            employee_ids_list = employee_ids
-        else:
-            return {"status": "error", "message": "Format d'IDs employés invalide"}
-
+        # 1. Parser et valider les entrées
+        employee_ids_list = _parse_employee_ids(employee_ids)
         if not employee_ids_list:
-            return {"status": "error", "message": "Aucun employé sélectionné"}
+            return {"status": "error", "message": _("Aucun employé sélectionné")}
 
-        # 2. Vérifier les permissions et le quota
-        from ovh_sms_integration.permissions import check_user_sms_quota
+        # 2. Vérifier quota
+        quota_check = _check_quota_for_sending(len(employee_ids_list))
+        if quota_check:
+            return quota_check
 
-        # check_user_sms_quota retourne un int (nombre de SMS restants) ou lève une exception
-        try:
-            remaining_quota = check_user_sms_quota(frappe.session.user)
-        except Exception as e:
-            frappe.throw(
-                _("Vous n'avez pas la permission d'envoyer des SMS: {0}").format(str(e)),
-                frappe.PermissionError
-            )
-
-        # 3. Vérifier que le quota est suffisant pour tous les envois
-        total_employees = len(employee_ids_list)
-
-        if remaining_quota < total_employees:
-            return {
-                "status": "error",
-                "message": (
-                    f"Quota insuffisant. Vous avez {remaining_quota} SMS "
-                    f"restant(s) mais tentez d'envoyer à {total_employees} "
-                    f"employé(s)."
-                ),
-            }
-
-        # 4. Valider le message
+        # 3. Valider et formater le message
         if not message or len(message.strip()) == 0:
-            return {"status": "error", "message": "Le message ne peut pas être vide"}
+            return {"status": "error", "message": _("Le message ne peut pas être vide")}
 
-        # 5. Préparer le message avec signature
-        if not sender_name:
-            sender_name = frappe.get_value("User", frappe.session.user, "full_name")
+        formatted_message = _format_message_with_sender(message, sender_name)
 
-        formatted_message = f"{message}\n\n- {sender_name}"
+        # 4. Envoyer à chaque employé
+        results, sent_count, failed_count = _send_to_employee_list(
+            employee_ids_list, formatted_message, sender_name
+        )
 
-        # 6. Importer la fonction d'envoi SMS
-        from ovh_sms_integration.utils.sms_utils import send_sms
-
-        # 7. Envoyer à chaque employé
-        results = []
-        sent_count = 0
-        failed_count = 0
-
-        for employee_id in employee_ids_list:
-            try:
-                # Récupérer le mobile de l'employé
-                employee_info = get_employee_mobile(employee_id)
-
-                if employee_info["status"] != "success":
-                    results.append(
-                        {
-                            "employee_id": employee_id,
-                            "employee_name": employee_info.get("employee_name", "Inconnu"),
-                            "status": "error",
-                            "message": employee_info.get("message", "Mobile introuvable"),
-                        }
-                    )
-                    failed_count += 1
-                    continue
-
-                mobile = employee_info["mobile"]
-                employee_name = employee_info["employee_name"]
-
-                # Envoyer le SMS
-                sms_result = send_sms(formatted_message, mobile)
-
-                if sms_result and sms_result.get("success"):
-                    # Succès
-                    results.append(
-                        {
-                            "employee_id": employee_id,
-                            "employee_name": employee_name,
-                            "mobile": mobile,
-                            "status": "success",
-                            "message_id": sms_result.get("details", {}).get("ids", [None])[0] if sms_result.get("details") else None,
-                            "message": "Envoyé",
-                        }
-                    )
-                    sent_count += 1
-
-                    # Log pour traçabilité
-                    frappe.log_error(
-                        f"SMS envoyé à {employee_name} ({mobile}) par {sender_name}",
-                        "SMS Calendar Success",
-                    )
-                else:
-                    # Échec d'envoi
-                    results.append(
-                        {
-                            "employee_id": employee_id,
-                            "employee_name": employee_name,
-                            "mobile": mobile,
-                            "status": "error",
-                            "message": sms_result.get("message", "Échec d'envoi") if sms_result else "Aucune réponse du service SMS",
-                        }
-                    )
-                    failed_count += 1
-
-            except Exception as e:
-                # Erreur pour cet employé spécifique
-                results.append({"employee_id": employee_id, "status": "error", "message": str(e)})
-                failed_count += 1
-                frappe.log_error(
-                    f"Erreur envoi SMS à {employee_id}: {str(e)}", "SMS Integration Error"
-                )
-
-        # 8. Déterminer le statut global
-        if sent_count == total_employees:
-            overall_status = "success"
-            summary_message = f"✅ {sent_count}/{total_employees} SMS envoyé(s) avec succès"
-        elif sent_count > 0:
-            overall_status = "partial"
-            summary_message = (
-                f"⚠️ {sent_count}/{total_employees} SMS envoyé(s), {failed_count} échec(s)"
-            )
-        else:
-            overall_status = "error"
-            summary_message = f"❌ Tous les envois ont échoué (0/{total_employees})"
-
-        return {
-            "status": overall_status,
-            "total": total_employees,
-            "sent": sent_count,
-            "failed": failed_count,
-            "results": results,
-            "message": summary_message,
-        }
+        # 5. Retourner le résultat
+        return _build_send_result(
+            len(employee_ids_list), sent_count, failed_count, results
+        )
 
     except frappe.PermissionError:
         raise
     except ImportError as e:
-        frappe.log_error(f"Module SMS non disponible: {str(e)}", "SMS Integration Error")
+        frappe.log_error(
+            f"Module SMS non disponible: {str(e)}", "SMS Integration Error"
+        )
         return {
             "status": "error",
-            "message": "Module SMS non disponible. Contactez votre administrateur.",
+            "message": _("Module SMS non disponible. Contactez votre administrateur."),
         }
     except Exception as e:
-        frappe.log_error(f"Erreur send_sms_to_employees: {str(e)}", "SMS Integration Error")
-        return {"status": "error", "message": f"Erreur lors de l'envoi des SMS: {str(e)}"}
+        frappe.log_error(
+            f"Erreur send_sms_to_employees: {str(e)}", "SMS Integration Error"
+        )
+        return {
+            "status": "error",
+            "message": _("Erreur lors de l'envoi des SMS: {0}").format(str(e)),
+        }
+
+
+def _parse_employee_ids(employee_ids: str | list[str]) -> list[str]:
+    """Parse les IDs d'employés depuis différents formats.
+
+    Args:
+        employee_ids: IDs en JSON string, liste, ou ID unique.
+
+    Returns:
+        list[str]: Liste des IDs d'employés.
+    """
+    import json
+
+    if isinstance(employee_ids, str):
+        try:
+            parsed_ids = json.loads(employee_ids)
+            if isinstance(parsed_ids, list):
+                return parsed_ids
+            return [employee_ids]
+        except json.JSONDecodeError:
+            return [employee_ids]
+    elif isinstance(employee_ids, list):
+        return employee_ids
+    return []
+
+
+def _check_quota_for_sending(total_employees: int) -> dict[str, Any] | None:
+    """Vérifie le quota SMS disponible.
+
+    Args:
+        total_employees: Nombre d'employés à contacter.
+
+    Returns:
+        dict | None: Erreur si quota insuffisant, None sinon.
+    """
+    from ovh_sms_integration.permissions import check_user_sms_quota
+
+    try:
+        remaining_quota = check_user_sms_quota(frappe.session.user)
+    except Exception as e:
+        frappe.throw(
+            _("Vous n'avez pas la permission d'envoyer des SMS: {0}").format(str(e)),
+            frappe.PermissionError,
+        )
+
+    if remaining_quota < total_employees:
+        return {
+            "status": "error",
+            "message": _(
+                "Quota insuffisant. Vous avez {0} SMS restant(s) "
+                "mais tentez d'envoyer à {1} employé(s)."
+            ).format(remaining_quota, total_employees),
+        }
+    return None
+
+
+def _format_message_with_sender(message: str, sender_name: str | None) -> str:
+    """Formate le message avec la signature de l'expéditeur.
+
+    Args:
+        message: Message original.
+        sender_name: Nom de l'expéditeur.
+
+    Returns:
+        str: Message formaté avec signature.
+    """
+    if not sender_name:
+        sender_name = frappe.get_value("User", frappe.session.user, "full_name")
+    return f"{message}\n\n- {sender_name}"
+
+
+def _send_to_employee_list(
+    employee_ids_list: list[str], formatted_message: str, sender_name: str | None
+) -> tuple[list[dict[str, Any]], int, int]:
+    """Envoie le SMS à une liste d'employés.
+
+    Args:
+        employee_ids_list: Liste des IDs d'employés.
+        formatted_message: Message formaté à envoyer.
+        sender_name: Nom de l'expéditeur pour les logs.
+
+    Returns:
+        tuple: (results, sent_count, failed_count)
+    """
+    from ovh_sms_integration.utils.sms_utils import send_sms
+
+    results: list[dict[str, Any]] = []
+    sent_count = 0
+    failed_count = 0
+
+    for employee_id in employee_ids_list:
+        result = _send_sms_to_single_employee(
+            employee_id, formatted_message, sender_name, send_sms
+        )
+        results.append(result)
+        if result["status"] == "success":
+            sent_count += 1
+        else:
+            failed_count += 1
+
+    return results, sent_count, failed_count
+
+
+def _send_sms_to_single_employee(
+    employee_id: str, message: str, sender_name: str | None, send_sms_func: Any
+) -> dict[str, Any]:
+    """Envoie un SMS à un seul employé.
+
+    Args:
+        employee_id: ID de l'employé.
+        message: Message à envoyer.
+        sender_name: Nom de l'expéditeur.
+        send_sms_func: Fonction d'envoi SMS.
+
+    Returns:
+        dict: Résultat de l'envoi.
+    """
+    try:
+        employee_info = get_employee_mobile(employee_id)
+
+        if employee_info["status"] != "success":
+            return {
+                "employee_id": employee_id,
+                "employee_name": employee_info.get("employee_name", "Inconnu"),
+                "status": "error",
+                "message": employee_info.get("message", "Mobile introuvable"),
+            }
+
+        mobile = employee_info["mobile"]
+        employee_name = employee_info["employee_name"]
+
+        sms_result = send_sms_func(message, mobile)
+
+        if sms_result and sms_result.get("success"):
+            frappe.logger().info(
+                f"SMS envoyé à {employee_name} ({mobile}) par {sender_name}"
+            )
+            return {
+                "employee_id": employee_id,
+                "employee_name": employee_name,
+                "mobile": mobile,
+                "status": "success",
+                "message_id": (
+                    sms_result.get("details", {}).get("ids", [None])[0]
+                    if sms_result.get("details")
+                    else None
+                ),
+                "message": _("Envoyé"),
+            }
+        else:
+            return {
+                "employee_id": employee_id,
+                "employee_name": employee_name,
+                "mobile": mobile,
+                "status": "error",
+                "message": (
+                    sms_result.get("message", _("Échec d'envoi"))
+                    if sms_result
+                    else _("Aucune réponse du service SMS")
+                ),
+            }
+
+    except Exception as e:
+        frappe.log_error(
+            f"Erreur envoi SMS à {employee_id}: {str(e)}", "SMS Integration Error"
+        )
+        return {"employee_id": employee_id, "status": "error", "message": str(e)}
+
+
+def _build_send_result(
+    total: int, sent: int, failed: int, results: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Construit le résultat final de l'envoi.
+
+    Args:
+        total: Nombre total d'employés.
+        sent: Nombre de SMS envoyés.
+        failed: Nombre d'échecs.
+        results: Détails par employé.
+
+    Returns:
+        dict: Résultat formaté.
+    """
+    if sent == total:
+        status = "success"
+        message = _("✅ {0}/{1} SMS envoyé(s) avec succès").format(sent, total)
+    elif sent > 0:
+        status = "partial"
+        message = _("⚠️ {0}/{1} SMS envoyé(s), {2} échec(s)").format(sent, total, failed)
+    else:
+        status = "error"
+        message = _("❌ Tous les envois ont échoué (0/{0})").format(total)
+
+    return {
+        "status": status,
+        "total": total,
+        "sent": sent,
+        "failed": failed,
+        "results": results,
+        "message": message,
+    }
 
 
 @frappe.whitelist()
@@ -371,11 +443,11 @@ def get_employees_with_mobile() -> dict[str, Any]:
 
             # Essayer différents champs possibles (selon la version d'ERPNext)
             mobile = (
-                getattr(emp, "cell_number", None) or
-                getattr(emp, "mobile_no", None) or
-                getattr(emp, "personal_mobile", None) or
-                getattr(emp, "mobile", None) or
-                getattr(emp, "phone", None)
+                getattr(emp, "cell_number", None)
+                or getattr(emp, "mobile_no", None)
+                or getattr(emp, "personal_mobile", None)
+                or getattr(emp, "mobile", None)
+                or getattr(emp, "phone", None)
             )
 
             if mobile:
@@ -395,8 +467,12 @@ def get_employees_with_mobile() -> dict[str, Any]:
         }
 
     except Exception as e:
-        frappe.log_error(f"Erreur get_employees_with_mobile: {str(e)}", "SMS Integration Error")
+        frappe.log_error(
+            f"Erreur get_employees_with_mobile: {str(e)}", "SMS Integration Error"
+        )
         return {
             "status": "error",
-            "message": f"Erreur lors de la récupération des employés: {str(e)}",
+            "message": _("Erreur lors de la récupération des employés: {0}").format(
+                str(e)
+            ),
         }

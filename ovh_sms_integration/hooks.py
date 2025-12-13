@@ -1,5 +1,4 @@
 from __future__ import unicode_literals
-from frappe import _
 
 app_name = "ovh_sms_integration"
 app_title = "Ovh Sms Integration"
@@ -141,41 +140,37 @@ after_install = "ovh_sms_integration.install.after_install"
 # Hook on document methods and events
 
 doc_events = {
-	"Sales Order": {
-		"on_submit": "ovh_sms_integration.utils.sms_utils.send_sales_order_sms"
-	},
-	"Payment Entry": {
-		"on_submit": "ovh_sms_integration.utils.sms_utils.send_payment_confirmation_sms"
-	},
-	"Delivery Note": {
-		"on_submit": "ovh_sms_integration.utils.sms_utils.send_delivery_sms"
-	},
-	"Purchase Order": {
-		"on_submit": "ovh_sms_integration.utils.sms_utils.send_purchase_order_sms"
-	},
-	"SMS Pricing Campaign": {
-		"validate": "ovh_sms_integration.ovh_sms_integration.doctype.sms_pricing_campaign.sms_pricing_campaign.validate_campaign",
-		"on_submit": "ovh_sms_integration.ovh_sms_integration.doctype.sms_pricing_campaign.sms_pricing_campaign.on_campaign_submit"
-	}
+    "Sales Order": {
+        "on_submit": "ovh_sms_integration.utils.sms_utils.send_sales_order_sms"
+    },
+    "Payment Entry": {
+        "on_submit": "ovh_sms_integration.utils.sms_utils.send_payment_confirmation_sms"
+    },
+    "Delivery Note": {
+        "on_submit": "ovh_sms_integration.utils.sms_utils.send_delivery_sms"
+    },
+    "Purchase Order": {
+        "on_submit": "ovh_sms_integration.utils.sms_utils.send_purchase_order_sms"
+    },
+    "SMS Pricing Campaign": {
+        "validate": "ovh_sms_integration.ovh_sms_integration.doctype.sms_pricing_campaign.sms_pricing_campaign.validate_campaign",
+        "on_submit": "ovh_sms_integration.ovh_sms_integration.doctype.sms_pricing_campaign.sms_pricing_campaign.on_campaign_submit",
+    },
 }
 
 # Scheduled Tasks
 # ---------------
 
 scheduler_events = {
-	"all": [
-		"ovh_sms_integration.ovh_sms_integration.doctype.sms_event_reminder.sms_event_reminder.process_event_reminders"
-	],
-	"hourly": [
-		"ovh_sms_integration.tasks.check_event_reminders_hourly"
-	],
-	"daily": [
-		"ovh_sms_integration.tasks.reset_daily_counters",
-		"ovh_sms_integration.tasks.cleanup_old_reminder_logs"
-	],
-	"weekly": [
-		"ovh_sms_integration.tasks.send_weekly_reminder_report"
-	]
+    "all": [
+        "ovh_sms_integration.ovh_sms_integration.doctype.sms_event_reminder.sms_event_reminder.process_event_reminders"
+    ],
+    "hourly": ["ovh_sms_integration.tasks.check_event_reminders_hourly"],
+    "daily": [
+        "ovh_sms_integration.tasks.reset_daily_counters",
+        "ovh_sms_integration.tasks.cleanup_old_reminder_logs",
+    ],
+    "weekly": ["ovh_sms_integration.tasks.send_weekly_reminder_report"],
 }
 
 # Testing
@@ -259,19 +254,14 @@ scheduler_events = {
 
 # SMS Event Reminder settings
 event_reminder_settings = {
-	"check_interval_minutes": 30,  # Vérifier toutes les 30 minutes
-	"max_reminders_per_run": 100,  # Limite de rappels par exécution
-	"retry_failed_after_hours": 2,  # Réessayer les échecs après 2h
-	"cleanup_logs_after_days": 30   # Nettoyer les logs après 30 jours
+    "check_interval_minutes": 30,  # Vérifier toutes les 30 minutes
+    "max_reminders_per_run": 100,  # Limite de rappels par exécution
+    "retry_failed_after_hours": 2,  # Réessayer les échecs après 2h
+    "cleanup_logs_after_days": 30,  # Nettoyer les logs après 30 jours
 }
 
 # Fixtures pour l'installation
 # -----------------------------
 fixtures = [
-	{
-		"doctype": "Custom Role",
-		"filters": [
-			["name", "in", ["SMS Manager", "SMS User"]]
-		]
-	}
+    {"doctype": "Custom Role", "filters": [["name", "in", ["SMS Manager", "SMS User"]]]}
 ]

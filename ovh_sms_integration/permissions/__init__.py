@@ -1,36 +1,42 @@
 # -*- coding: utf-8 -*-
-"""Gestion des permissions et sécurité pour les campagnes SMS.
+"""Permissions package for OVH SMS Integration.
 
-Ce module est un wrapper pour la rétrocompatibilité.
-L'implémentation est maintenant dans ovh_sms_integration.permissions.*
-
-Ce module gère les permissions, quotas, et la sécurité pour les campagnes SMS.
+Ce package gère les permissions, quotas, et la sécurité pour les campagnes SMS.
 """
 from __future__ import annotations
 
-# Re-export pour rétrocompatibilité
-from ovh_sms_integration.permissions import (
-    anonymize_campaign_data,
-    check_concurrent_campaigns,
-    check_user_sms_quota,
-    create_sms_roles,
-    enforce_gdpr_compliance,
+from ovh_sms_integration.permissions.query import (
     get_campaign_permission_query_conditions,
-    get_user_sms_quota,
     has_campaign_permission,
-    log_sms_action,
-    log_sms_activity,
-    notify_approvers,
-    rate_limit_sms,
+    validate_sms_permissions,
+    validate_sms_sending_permission,
+)
+from ovh_sms_integration.permissions.quota import (
+    check_user_sms_quota,
+    get_user_sms_quota,
+)
+from ovh_sms_integration.permissions.security import (
+    check_concurrent_campaigns,
+    create_sms_roles,
     request_campaign_approval,
-    require_sms_permission,
     setup_campaign_security,
     setup_default_permissions,
     setup_security_limits,
     validate_campaign_limits,
+)
+from ovh_sms_integration.permissions.gdpr import (
+    anonymize_campaign_data,
+    enforce_gdpr_compliance,
     validate_phone_consent,
-    validate_sms_permissions,
-    validate_sms_sending_permission,
+)
+from ovh_sms_integration.permissions.decorators import (
+    log_sms_action,
+    rate_limit_sms,
+    require_sms_permission,
+)
+from ovh_sms_integration.permissions.activity import (
+    log_sms_activity,
+    notify_approvers,
 )
 
 __all__ = [

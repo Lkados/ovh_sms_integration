@@ -5,8 +5,8 @@ This module exports all API endpoints for SMS functionality.
 """
 
 # Employee SMS API
-from ovh_sms_integration.api.employee import (  # noqa: F401
-    check_sms_quota,
+from ovh_sms_integration.api.employee import check_sms_quota  # noqa: F401
+from ovh_sms_integration.api.employee import (
     get_employee_mobile,
     get_employees_with_mobile,
     send_sms_to_employees,
